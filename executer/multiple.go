@@ -1,0 +1,101 @@
+package executer
+
+import (
+	"context"
+	"sync"
+	"sync/atomic"
+
+	"github.com/lsg2020/gactor"
+)
+
+type MultipleGoroutineResponseInfo struct {
+	ch      chan *gactor.DispatchMessage
+	asyncCB func(msg *gactor.DispatchMessage)
+}
+
+type MultipleGoroutine struct {
+	context     context.Context
+	nextSession int32
+
+	waitMutex    sync.Mutex
+	waitResponse map[int]MultipleGoroutineResponseInfo
+}
+
+func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *gactor.DispatchMessage)) gactor.SessionCancel {
+	waitInfo := MultipleGoroutineResponseInfo{asyncCB: asyncCB}
+	if asyncCB == nil {
+		waitInfo.ch = make(chan *gactor.DispatchMessage, 1)
+	}
+	executer.waitMutex.Lock()
+	executer.waitResponse[session] = waitInfo
+	executer.waitMutex.Unlock()
+	return func() {
+		executer.waitMutex.Lock()
+		delete(executer.waitResponse, session)
+		executer.waitMutex.Unlock()
+	}
+}
+
+func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (interface{}, *gactor.ActorError) {
+	executer.waitMutex.Lock()
+	waitInfo, ok := executer.waitResponse[session]
+	executer.waitMutex.Unlock()
+
+	if !ok || waitInfo.ch == nil {
+		return nil, gactor.ErrResponseMiss
+	}
+
+	select {
+	case msg := <-waitInfo.ch:
+		return msg.Content, msg.ResponseErr
+	case <-ctx.Done():
+		return nil, gactor.ErrCallTimeOut
+	}
+}
+
+func (executer *MultipleGoroutine) Start(ctx context.Context) {
+	executer.nextSession = 0
+
+	executer.context = ctx
+	executer.waitResponse = make(map[int]MultipleGoroutineResponseInfo)
+
+}
+
+func (executer *MultipleGoroutine) OnMessage(msg *gactor.DispatchMessage) {
+	cb := msg.Actor.Callback()
+	if cb != nil {
+		go cb(msg)
+	}
+}
+
+func (executer *MultipleGoroutine) OnResponse(session int, err *gactor.ActorError, data interface{}) {
+	executer.waitMutex.Lock()
+	waitInfo, ok := executer.waitResponse[session]
+	executer.waitMutex.Unlock()
+	if !ok {
+		return
+	}
+
+	msg := &gactor.DispatchMessage{
+		ResponseErr: err,
+		Content:     data,
+	}
+	msg.Headers.Put(
+		gactor.BuildHeaderInt(gactor.HeaderIdProtocol, gactor.ProtocolResponse),
+		gactor.BuildHeaderInt(gactor.HeaderIdSession, session),
+	)
+	if waitInfo.asyncCB != nil {
+		go waitInfo.asyncCB(msg)
+		return
+	}
+
+	waitInfo.ch <- msg
+}
+
+func (executer *MultipleGoroutine) NewSession() int {
+	session := atomic.AddInt32(&executer.nextSession, 1)
+	if session == 0 {
+		session = atomic.AddInt32(&executer.nextSession, 1)
+	}
+	return int(session)
+}

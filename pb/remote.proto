@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package message;
+option go_package = ".;message";
+
+message Error {
+    int32 code = 1;
+    string msg = 2;
+    string stack = 3;
+}
+
+message ActorAddr {
+    uint64 node_instance_id = 1;
+    uint32 handle = 2;
+}
+
+message Header {
+    int32 id = 1;
+    int32 type = 2;
+    int32 val_int = 3;
+    string val_string = 4;
+    ActorAddr val_addr = 5;
+    bytes val_bytes = 6;
+}
+
+message Message {
+    repeated Header headers = 1;
+    Error response_err = 2;
+
+    bytes payload = 12;
+}
