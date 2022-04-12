@@ -51,8 +51,8 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 			system.Logger().Errorf("select unmarshal error path:%s val:%s", preFixName, string(val))
 			return
 		}
-		selector.addrMux.Lock()
-		defer selector.addrMux.Unlock()
+		selector.addrMutex.Lock()
+		defer selector.addrMutex.Unlock()
 		selector.addrList = append(selector.addrList, addr)
 	}
 
@@ -63,8 +63,8 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 			system.Logger().Errorf("select unmarshal error path:%s val:%s", preFixName, string(val))
 			return
 		}
-		selector.addrMux.Lock()
-		defer selector.addrMux.Unlock()
+		selector.addrMutex.Lock()
+		defer selector.addrMutex.Unlock()
 		for i := 0; i < len(selector.addrList); i++ {
 			if selector.addrList[i].Handle == addr.Handle {
 				selector.addrList[i] = selector.addrList[len(selector.addrList)-1]
@@ -95,14 +95,14 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 }
 
 type etcdSelector struct {
-	addrMux  sync.Mutex
-	addrList []*ActorAddr
-	cancel   context.CancelFunc
+	addrMutex sync.Mutex
+	addrList  []*ActorAddr
+	cancel    context.CancelFunc
 }
 
 func (selector *etcdSelector) Addr() *ActorAddr {
-	selector.addrMux.Lock()
-	defer selector.addrMux.Unlock()
+	selector.addrMutex.Lock()
+	defer selector.addrMutex.Unlock()
 	if len(selector.addrList) <= 0 {
 		return nil
 	}
@@ -120,8 +120,8 @@ type loopSelector struct {
 }
 
 func (selector *loopSelector) Addr() *ActorAddr {
-	selector.etcd.addrMux.Lock()
-	defer selector.etcd.addrMux.Unlock()
+	selector.etcd.addrMutex.Lock()
+	defer selector.etcd.addrMutex.Unlock()
 	if len(selector.etcd.addrList) <= 0 {
 		return nil
 	}

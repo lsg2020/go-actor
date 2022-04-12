@@ -7,7 +7,6 @@ type ActorSystemOption func(ops *actorSystemOptions)
 type actorSystemOptions struct {
 	instanceID uint64
 	name       string
-	server     bool
 	etcd       []string
 	etcdPrefix string
 	transports []Transport
@@ -45,12 +44,6 @@ func (options *actorSystemOptions) init() (*actorSystemOptions, error) {
 func WithTransport(transport Transport) ActorSystemOption {
 	return func(options *actorSystemOptions) {
 		options.transports = append(options.transports, transport)
-	}
-}
-
-func WithServer() ActorSystemOption {
-	return func(options *actorSystemOptions) {
-		options.server = true
 	}
 }
 

@@ -77,6 +77,10 @@ func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) {
 	}()
 	a := msg.Actor.(*actorImpl)
 	a.Instance().OnInit(a)
+
+	if a.ops.initcb != nil {
+		a.ops.initcb()
+	}
 }
 
 func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) {

@@ -4,7 +4,7 @@ package hello;
 option go_package = "./;hello";
 
 service HelloService {
-    // onlysend
+    // onlysend;test send protocol
     rpc Send(Request) returns (Empty) {}
 
     rpc Add(Request) returns (Response) {}

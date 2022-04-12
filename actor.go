@@ -43,10 +43,9 @@ type actorImpl struct {
 	addrs      map[*ActorSystem]*ActorAddr
 
 	cb          Callback
-	protos      []Proto
 	protoSystem Proto
 
-	logger Logger
+	ops *actorOptions
 }
 
 func (a *actorImpl) Instance() ActorInstance {
@@ -54,7 +53,7 @@ func (a *actorImpl) Instance() ActorInstance {
 }
 
 func (a *actorImpl) Logger() Logger {
-	return a.logger
+	return a.ops.logger
 }
 
 func (a *actorImpl) setCallback(cb Callback) {
@@ -122,7 +121,7 @@ func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Pr
 }
 
 func (a *actorImpl) getProto(id int) Proto {
-	for _, p := range a.protos {
+	for _, p := range a.ops.protos {
 		if p.Id() == id {
 			return p
 		}
@@ -274,20 +273,55 @@ func (a *actorImpl) Sleep(d time.Duration) {
 	_, _ = a.executer.Wait(context.Background(), session)
 }
 
-func NewActor(inst ActorInstance, executer Executer, logger Logger, protos []Proto) Actor {
-	if logger == nil {
-		logger = DefaultLogger()
-	}
-	a := &actorImpl{
-		instance:    inst,
-		executer:    executer,
-		addrs:       make(map[*ActorSystem]*ActorAddr),
-		logger:      logger,
-		protoSystem: NewProtoSystem(logger),
+type actorOptions struct {
+	logger Logger
+	protos []Proto
+	initcb func()
+}
+
+func (ops *actorOptions) init() {
+	if ops.logger == nil {
+		ops.logger = DefaultLogger()
 	}
 
-	a.protos = append(a.protos, a.protoSystem)
-	a.protos = append(a.protos, protos...)
+}
+
+type ActorOption func(ops *actorOptions)
+
+func ActorWithLogger(logger Logger) ActorOption {
+	return func(ops *actorOptions) {
+		ops.logger = logger
+	}
+}
+
+func ActorWithProto(proto Proto) ActorOption {
+	return func(ops *actorOptions) {
+		ops.protos = append(ops.protos, proto)
+	}
+}
+
+func ActorWithInitCB(cb func()) ActorOption {
+	return func(ops *actorOptions) {
+		ops.initcb = cb
+	}
+}
+
+func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Actor {
+	ops := &actorOptions{}
+	for _, opt := range options {
+		opt(ops)
+	}
+	ops.init()
+
+	a := &actorImpl{
+		instance: inst,
+		executer: executer,
+		addrs:    make(map[*ActorSystem]*ActorAddr),
+		ops:      ops,
+	}
+
+	a.protoSystem = NewProtoSystem(ops.logger)
+	a.ops.protos = append(a.ops.protos, a.protoSystem)
 
 	a.setCallback(a.onMessage)
 

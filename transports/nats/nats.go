@@ -27,9 +27,9 @@ type NatsTransport struct {
 	nodeMutex sync.Mutex
 	nodes     map[uint64]string
 
-	responseMux sync.Mutex
-	responses   map[int32]*gactor.DispatchMessage
-	session     int32
+	responseMutex sync.Mutex
+	responses     map[int32]*gactor.DispatchMessage
+	session       int32
 }
 
 func (trans *NatsTransport) Name() string {
@@ -92,9 +92,9 @@ func (trans *NatsTransport) Init(system *gactor.ActorSystem) error {
 
 		if dispatch.Headers.GetInt(gactor.HeaderIdProtocol) == gactor.ProtocolResponse {
 			var requestMsg *gactor.DispatchMessage
-			trans.responseMux.Lock()
+			trans.responseMutex.Lock()
 			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(gactor.HeaderIdTransSession))]
-			trans.responseMux.Unlock()
+			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
@@ -137,7 +137,7 @@ func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCan
 	reqsession := msg.Headers.GetInt(gactor.HeaderIdSession)
 	transSession := int32(0)
 	if reqsession >= 0 {
-		trans.responseMux.Lock()
+		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
 		msg.Headers.Put(
@@ -146,7 +146,7 @@ func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCan
 		)
 
 		trans.responses[transSession] = msg
-		trans.responseMux.Unlock()
+		trans.responseMutex.Unlock()
 	}
 
 	buf, pberr := proto.Marshal(msg.ToPB())
@@ -160,9 +160,9 @@ func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCan
 	}
 	if reqsession >= 0 {
 		return func() {
-			trans.responseMux.Lock()
+			trans.responseMutex.Lock()
 			delete(trans.responses, int32(transSession))
-			trans.responseMux.Unlock()
+			trans.responseMutex.Unlock()
 		}, nil
 	}
 	return nil, nil

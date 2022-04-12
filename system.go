@@ -21,11 +21,11 @@ type ActorSystem struct {
 	etcdClient  *etcd.Client
 	etcdSession *concurrency.Session
 
-	namesMux sync.Mutex
-	names    map[ActorHandle][]string
+	namesMutex sync.Mutex
+	names      map[ActorHandle][]string
 
-	nodeMux sync.Mutex
-	nodes   []*ActorNodeConfig
+	nodeMutex sync.Mutex
+	nodes     []*ActorNodeConfig
 }
 
 func NewActorSystem(opts ...ActorSystemOption) (*ActorSystem, error) {
@@ -82,8 +82,8 @@ type ActorNodeConfig struct {
 }
 
 func (system *ActorSystem) NodeConfig(instanceId uint64) *ActorNodeConfig {
-	system.nodeMux.Lock()
-	defer system.nodeMux.Unlock()
+	system.nodeMutex.Lock()
+	defer system.nodeMutex.Unlock()
 
 	for _, node := range system.nodes {
 		if node.InstanceID == instanceId {
@@ -139,8 +139,8 @@ func (system *ActorSystem) initEtcd() error {
 	}
 
 	addnode := func(k, v []byte) {
-		system.nodeMux.Lock()
-		defer system.nodeMux.Unlock()
+		system.nodeMutex.Lock()
+		defer system.nodeMutex.Unlock()
 
 		config := &ActorNodeConfig{}
 		err := json.Unmarshal(v, config)
@@ -152,8 +152,8 @@ func (system *ActorSystem) initEtcd() error {
 	}
 
 	delnode := func(k, v []byte) {
-		system.nodeMux.Lock()
-		defer system.nodeMux.Unlock()
+		system.nodeMutex.Lock()
+		defer system.nodeMutex.Unlock()
 
 		config := &ActorNodeConfig{}
 		err := json.Unmarshal(v, config)
@@ -197,10 +197,6 @@ func (system *ActorSystem) InstanceID() uint64 {
 	return system.instanceID
 }
 
-func (system *ActorSystem) IsServer() bool {
-	return system.options.server
-}
-
 func (system *ActorSystem) Register(a Actor, names ...string) *ActorAddr {
 	handle := system.handle.handleRegister(a)
 
@@ -229,9 +225,9 @@ func (system *ActorSystem) UnRegister(a Actor) {
 		a.onUnregister(system)
 	}
 
-	system.namesMux.Lock()
+	system.namesMutex.Lock()
 	names := system.names[handle]
-	system.namesMux.Unlock()
+	system.namesMutex.Unlock()
 	for _, name := range names {
 		system.UnbindName(name, handle)
 	}
@@ -250,14 +246,14 @@ func (system *ActorSystem) BindName(name string, addr *ActorAddr) error {
 		return err
 	}
 
-	system.namesMux.Lock()
-	defer system.namesMux.Unlock()
+	system.namesMutex.Lock()
+	defer system.namesMutex.Unlock()
 	system.names[addr.Handle] = append(system.names[addr.Handle], name)
 	return nil
 }
 
 func (system *ActorSystem) UnbindName(name string, handle ActorHandle) {
-	system.namesMux.Lock()
+	system.namesMutex.Lock()
 	names := system.names[handle]
 	for i := 0; i < len(names); i++ {
 		if names[i] == name {
@@ -271,7 +267,7 @@ func (system *ActorSystem) UnbindName(name string, handle ActorHandle) {
 	} else {
 		delete(system.names, handle)
 	}
-	system.namesMux.Unlock()
+	system.namesMutex.Unlock()
 
 	key := fmt.Sprintf("/%s/%s/names/%s/%d", system.options.etcdPrefix, system.options.name, name, handle)
 	_, _ = system.etcdClient.Delete(system.Context(), key)

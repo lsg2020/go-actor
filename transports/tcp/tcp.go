@@ -45,9 +45,9 @@ type TcpTransport struct {
 	nodeMutex sync.Mutex
 	connects  map[uint64]*tcpConnect
 
-	responseMux sync.Mutex
-	responses   map[int32]*gactor.DispatchMessage
-	session     int32
+	responseMutex sync.Mutex
+	responses     map[int32]*gactor.DispatchMessage
+	session       int32
 }
 
 func (trans *TcpTransport) Name() string {
@@ -70,10 +70,6 @@ func (trans *TcpTransport) newTcpConnect(conn net.Conn, onclose func()) *tcpConn
 
 func (trans *TcpTransport) Init(system *gactor.ActorSystem) error {
 	trans.system = system
-
-	if !system.IsServer() {
-		return nil
-	}
 
 	listener, err := net.Listen("tcp", trans.listenAddr)
 	if err != nil {
@@ -136,13 +132,13 @@ func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCanc
 
 	transSession := int32(0)
 	if reqsession >= 0 {
-		trans.responseMux.Lock()
+		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
 		msg.Headers.Put(gactor.BuildHeaderInt(gactor.HeaderIdTransSession, int(transSession)))
 
 		trans.responses[transSession] = msg
-		trans.responseMux.Unlock()
+		trans.responseMutex.Unlock()
 	}
 
 	buf, pberr := proto.Marshal(msg.ToPB())
@@ -153,9 +149,9 @@ func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCanc
 
 	if reqsession >= 0 {
 		return func() {
-			trans.responseMux.Lock()
+			trans.responseMutex.Lock()
 			delete(trans.responses, transSession)
-			trans.responseMux.Unlock()
+			trans.responseMutex.Unlock()
 		}, nil
 	}
 	return nil, nil
@@ -202,9 +198,9 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 
 		if dispatch.Headers.GetInt(gactor.HeaderIdProtocol) == gactor.ProtocolResponse {
 			var requestMsg *gactor.DispatchMessage
-			trans.responseMux.Lock()
+			trans.responseMutex.Lock()
 			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(gactor.HeaderIdTransSession))]
-			trans.responseMux.Unlock()
+			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			} else {
