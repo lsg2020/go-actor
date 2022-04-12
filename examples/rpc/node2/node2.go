@@ -27,6 +27,7 @@ func (p *HelloActor) OnInit(a gactor.Actor) {
 	p.actor = a
 
 	for i := int32(0); i < 40; i++ {
+		client.Send(system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		rsp, err := client.CallSourceAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		log.Println("test call resource", proto.MarshalTextString(rsp), err)
 		a.Sleep(time.Second)
