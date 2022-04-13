@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lsg2020/gactor"
-	message "github.com/lsg2020/gactor/pb"
+	go_actor "github.com/lsg2020/go-actor"
+	message "github.com/lsg2020/go-actor/pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -19,7 +19,7 @@ func NewTcp(listenAddr string, publicAddr string) *TcpTransport {
 		listenAddr: listenAddr,
 		publicAddr: publicAddr,
 		connects:   make(map[uint64]*tcpConnect),
-		responses:  make(map[int32]*gactor.DispatchMessage),
+		responses:  make(map[int32]*go_actor.DispatchMessage),
 	}
 	return trans
 }
@@ -41,13 +41,13 @@ func (node *tcpConnect) send(buf []byte) {
 type TcpTransport struct {
 	listenAddr string
 	publicAddr string
-	system     *gactor.ActorSystem
+	system     *go_actor.ActorSystem
 
 	nodeMutex sync.Mutex
 	connects  map[uint64]*tcpConnect
 
 	responseMutex sync.Mutex
-	responses     map[int32]*gactor.DispatchMessage
+	responses     map[int32]*go_actor.DispatchMessage
 	session       int32
 }
 
@@ -69,7 +69,7 @@ func (trans *TcpTransport) newTcpConnect(conn net.Conn, onclose func()) *tcpConn
 	return node
 }
 
-func (trans *TcpTransport) Init(system *gactor.ActorSystem) error {
+func (trans *TcpTransport) Init(system *go_actor.ActorSystem) error {
 	trans.system = system
 
 	listener, err := net.Listen("tcp", trans.listenAddr)
@@ -92,11 +92,11 @@ func (trans *TcpTransport) Init(system *gactor.ActorSystem) error {
 	return nil
 }
 
-func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCancel, *gactor.ActorError) {
-	reqsession := msg.Headers.GetInt(gactor.HeaderIdSession)
-	destination := msg.Headers.GetAddr(gactor.HeaderIdDestination)
+func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, *go_actor.ActorError) {
+	reqsession := msg.Headers.GetInt(go_actor.HeaderIdSession)
+	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
 	if destination == nil {
-		return nil, gactor.ErrNeedDestination
+		return nil, go_actor.ErrNeedDestination
 	}
 
 	trans.nodeMutex.Lock()
@@ -105,18 +105,18 @@ func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCanc
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
-			return nil, gactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 		nodeAddr, ok := cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, gactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 
 		conn, err := net.Dial("tcp", nodeAddr)
 		if err != nil {
 			trans.nodeMutex.Unlock()
-			return nil, gactor.ErrorWrap(err)
+			return nil, go_actor.ErrorWrap(err)
 		}
 
 		tcpConn = trans.newTcpConnect(conn, func() {
@@ -136,7 +136,7 @@ func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCanc
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
-		msg.Headers.Put(gactor.BuildHeaderInt(gactor.HeaderIdTransSession, int(transSession)))
+		msg.Headers.Put(go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, int(transSession)))
 
 		trans.responses[transSession] = msg
 		trans.responseMutex.Unlock()
@@ -144,7 +144,7 @@ func (trans *TcpTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCanc
 
 	buf, pberr := proto.Marshal(msg.ToPB())
 	if pberr != nil {
-		return nil, gactor.ErrorWrap(pberr)
+		return nil, go_actor.ErrorWrap(pberr)
 	}
 	tcpConn.send(buf)
 
@@ -167,15 +167,15 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 		}
 	}()
 
-	response := func(msg *gactor.DispatchMessage, err *gactor.ActorError, data interface{}) {
-		responseMsg := &gactor.DispatchMessage{
+	response := func(msg *go_actor.DispatchMessage, err *go_actor.ActorError, data interface{}) {
+		responseMsg := &go_actor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,
 		}
 		responseMsg.Headers.Put(
-			gactor.BuildHeaderInt(gactor.HeaderIdProtocol, gactor.ProtocolResponse),
-			gactor.BuildHeaderInt(gactor.HeaderIdSession, msg.Headers.GetInt(gactor.HeaderIdSession)),
-			gactor.BuildHeaderInt(gactor.HeaderIdTransSession, msg.Headers.GetInt(gactor.HeaderIdTransSession)),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdSession, msg.Headers.GetInt(go_actor.HeaderIdSession)),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, msg.Headers.GetInt(go_actor.HeaderIdTransSession)),
 		)
 		buf, pberr := proto.Marshal(responseMsg.ToPB())
 		if pberr != nil {
@@ -192,20 +192,20 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 			return
 		}
 
-		dispatch := &gactor.DispatchMessage{
+		dispatch := &go_actor.DispatchMessage{
 			DispatchResponse: response,
 		}
 		dispatch.FromPB(msg)
 
-		if dispatch.Headers.GetInt(gactor.HeaderIdProtocol) == gactor.ProtocolResponse {
-			var requestMsg *gactor.DispatchMessage
+		if dispatch.Headers.GetInt(go_actor.HeaderIdProtocol) == go_actor.ProtocolResponse {
+			var requestMsg *go_actor.DispatchMessage
 			trans.responseMutex.Lock()
-			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(gactor.HeaderIdTransSession))]
+			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))]
 			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			} else {
-				trans.system.Logger().Warnf("dispatch response message not exists session: %d\n", dispatch.Headers.GetInt(gactor.HeaderIdTransSession))
+				trans.system.Logger().Warnf("dispatch response message not exists session: %d\n", dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))
 			}
 		} else {
 			err := trans.system.Dispatch(dispatch)

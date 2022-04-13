@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/lsg2020/gactor"
-	message "github.com/lsg2020/gactor/pb"
+	go_actor "github.com/lsg2020/go-actor"
+	message "github.com/lsg2020/go-actor/pb"
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
 )
@@ -18,7 +18,7 @@ func NewNats(servers string) *NatsTransport {
 }
 
 type NatsTransport struct {
-	system  *gactor.ActorSystem
+	system  *go_actor.ActorSystem
 	servers string
 	topic   string
 
@@ -28,7 +28,7 @@ type NatsTransport struct {
 	nodes     map[uint64]string
 
 	responseMutex sync.Mutex
-	responses     map[int32]*gactor.DispatchMessage
+	responses     map[int32]*go_actor.DispatchMessage
 	session       int32
 }
 
@@ -40,9 +40,9 @@ func (trans *NatsTransport) URI() string {
 	return trans.topic
 }
 
-func (trans *NatsTransport) Init(system *gactor.ActorSystem) error {
+func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 	trans.nodes = make(map[uint64]string)
-	trans.responses = make(map[int32]*gactor.DispatchMessage)
+	trans.responses = make(map[int32]*go_actor.DispatchMessage)
 	trans.session = 1
 	trans.system = system
 	nc, err := nats.Connect(trans.servers)
@@ -52,22 +52,22 @@ func (trans *NatsTransport) Init(system *gactor.ActorSystem) error {
 
 	node := fmt.Sprintf("%d", system.InstanceID())
 
-	response := func(msg *gactor.DispatchMessage, err *gactor.ActorError, data interface{}) {
-		responseMsg := &gactor.DispatchMessage{
+	response := func(msg *go_actor.DispatchMessage, err *go_actor.ActorError, data interface{}) {
+		responseMsg := &go_actor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,
 		}
 		responseMsg.Headers.Put(
-			gactor.BuildHeaderInt(gactor.HeaderIdProtocol, gactor.ProtocolResponse),
-			gactor.BuildHeaderInt(gactor.HeaderIdSession, msg.Headers.GetInt(gactor.HeaderIdSession)),
-			gactor.BuildHeaderInt(gactor.HeaderIdTransSession, msg.Headers.GetInt(gactor.HeaderIdTransSession)),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdSession, msg.Headers.GetInt(go_actor.HeaderIdSession)),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, msg.Headers.GetInt(go_actor.HeaderIdTransSession)),
 		)
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
 			system.Logger().Errorf("response pack error %s\n", perr.Error())
 			return
 		}
-		perr = nc.Publish(msg.Headers.GetStr(gactor.HeaderIdTransAddress), buf)
+		perr = nc.Publish(msg.Headers.GetStr(go_actor.HeaderIdTransAddress), buf)
 		if err != nil {
 			system.Logger().Errorf("response pack error %s\n", perr.Error())
 		}
@@ -85,15 +85,15 @@ func (trans *NatsTransport) Init(system *gactor.ActorSystem) error {
 			return
 		}
 
-		dispatch := &gactor.DispatchMessage{
+		dispatch := &go_actor.DispatchMessage{
 			DispatchResponse: response,
 		}
 		dispatch.FromPB(msg)
 
-		if dispatch.Headers.GetInt(gactor.HeaderIdProtocol) == gactor.ProtocolResponse {
-			var requestMsg *gactor.DispatchMessage
+		if dispatch.Headers.GetInt(go_actor.HeaderIdProtocol) == go_actor.ProtocolResponse {
+			var requestMsg *go_actor.DispatchMessage
 			trans.responseMutex.Lock()
-			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(gactor.HeaderIdTransSession))]
+			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))]
 			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
@@ -109,10 +109,10 @@ func (trans *NatsTransport) Init(system *gactor.ActorSystem) error {
 	return err
 }
 
-func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCancel, *gactor.ActorError) {
-	destination := msg.Headers.GetAddr(gactor.HeaderIdDestination)
+func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, *go_actor.ActorError) {
+	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
 	if destination == nil {
-		return nil, gactor.ErrNeedDestination
+		return nil, go_actor.ErrNeedDestination
 	}
 
 	trans.nodeMutex.Lock()
@@ -121,28 +121,28 @@ func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCan
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
-			return nil, gactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 		var ok bool
 		nodeAddr, ok = cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, gactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 
 		trans.nodes[destination.NodeInstanceId] = nodeAddr
 	}
 	trans.nodeMutex.Unlock()
 
-	reqsession := msg.Headers.GetInt(gactor.HeaderIdSession)
+	reqsession := msg.Headers.GetInt(go_actor.HeaderIdSession)
 	transSession := int32(0)
 	if reqsession >= 0 {
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
 		msg.Headers.Put(
-			gactor.BuildHeaderInt(gactor.HeaderIdTransSession, int(transSession)),
-			gactor.BuildHeaderString(gactor.HeaderIdTransAddress, trans.topic),
+			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, int(transSession)),
+			go_actor.BuildHeaderString(go_actor.HeaderIdTransAddress, trans.topic),
 		)
 
 		trans.responses[transSession] = msg
@@ -151,12 +151,12 @@ func (trans *NatsTransport) Send(msg *gactor.DispatchMessage) (gactor.SessionCan
 
 	buf, pberr := proto.Marshal(msg.ToPB())
 	if pberr != nil {
-		return nil, gactor.ErrorWrap(pberr)
+		return nil, go_actor.ErrorWrap(pberr)
 	}
 
 	err := trans.nc.Publish(nodeAddr, buf)
 	if err != nil {
-		return nil, gactor.ErrorWrap(err)
+		return nil, go_actor.ErrorWrap(err)
 	}
 	if reqsession >= 0 {
 		return func() {

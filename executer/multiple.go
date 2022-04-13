@@ -5,12 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/lsg2020/gactor"
+	go_actor "github.com/lsg2020/go-actor"
 )
 
 type MultipleGoroutineResponseInfo struct {
-	ch      chan *gactor.DispatchMessage
-	asyncCB func(msg *gactor.DispatchMessage)
+	ch      chan *go_actor.DispatchMessage
+	asyncCB func(msg *go_actor.DispatchMessage)
 }
 
 // MultipleGoroutine 是一个多协执行器
@@ -23,10 +23,10 @@ type MultipleGoroutine struct {
 	waitResponse map[int]MultipleGoroutineResponseInfo
 }
 
-func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *gactor.DispatchMessage)) gactor.SessionCancel {
+func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *go_actor.DispatchMessage)) go_actor.SessionCancel {
 	waitInfo := MultipleGoroutineResponseInfo{asyncCB: asyncCB}
 	if asyncCB == nil {
-		waitInfo.ch = make(chan *gactor.DispatchMessage, 1)
+		waitInfo.ch = make(chan *go_actor.DispatchMessage, 1)
 	}
 	executer.waitMutex.Lock()
 	executer.waitResponse[session] = waitInfo
@@ -38,20 +38,20 @@ func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *gact
 	}
 }
 
-func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (interface{}, *gactor.ActorError) {
+func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (interface{}, *go_actor.ActorError) {
 	executer.waitMutex.Lock()
 	waitInfo, ok := executer.waitResponse[session]
 	executer.waitMutex.Unlock()
 
 	if !ok || waitInfo.ch == nil {
-		return nil, gactor.ErrResponseMiss
+		return nil, go_actor.ErrResponseMiss
 	}
 
 	select {
 	case msg := <-waitInfo.ch:
 		return msg.Content, msg.ResponseErr
 	case <-ctx.Done():
-		return nil, gactor.ErrCallTimeOut
+		return nil, go_actor.ErrCallTimeOut
 	}
 }
 
@@ -63,14 +63,14 @@ func (executer *MultipleGoroutine) Start(ctx context.Context) {
 
 }
 
-func (executer *MultipleGoroutine) OnMessage(msg *gactor.DispatchMessage) {
+func (executer *MultipleGoroutine) OnMessage(msg *go_actor.DispatchMessage) {
 	cb := msg.Actor.Callback()
 	if cb != nil {
 		go cb(msg)
 	}
 }
 
-func (executer *MultipleGoroutine) OnResponse(session int, err *gactor.ActorError, data interface{}) {
+func (executer *MultipleGoroutine) OnResponse(session int, err *go_actor.ActorError, data interface{}) {
 	executer.waitMutex.Lock()
 	waitInfo, ok := executer.waitResponse[session]
 	executer.waitMutex.Unlock()
@@ -78,13 +78,13 @@ func (executer *MultipleGoroutine) OnResponse(session int, err *gactor.ActorErro
 		return
 	}
 
-	msg := &gactor.DispatchMessage{
+	msg := &go_actor.DispatchMessage{
 		ResponseErr: err,
 		Content:     data,
 	}
 	msg.Headers.Put(
-		gactor.BuildHeaderInt(gactor.HeaderIdProtocol, gactor.ProtocolResponse),
-		gactor.BuildHeaderInt(gactor.HeaderIdSession, session),
+		go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
+		go_actor.BuildHeaderInt(go_actor.HeaderIdSession, session),
 	)
 	if waitInfo.asyncCB != nil {
 		go waitInfo.asyncCB(msg)

@@ -1,4 +1,4 @@
-package gactor
+package go_actor
 
 import (
 	"fmt"

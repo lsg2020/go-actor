@@ -5,12 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/lsg2020/gactor"
+	go_actor "github.com/lsg2020/go-actor"
 )
 
 type SingleGoroutineResponseInfo struct {
 	cond    *sync.Cond
-	asyncCB func(msg *gactor.DispatchMessage)
+	asyncCB func(msg *go_actor.DispatchMessage)
 }
 
 // SingleGoroutine 是一个单协执行器
@@ -19,7 +19,7 @@ type SingleGoroutineResponseInfo struct {
 type SingleGoroutine struct {
 	context     context.Context
 	cond        *sync.Cond
-	ch          chan *gactor.DispatchMessage
+	ch          chan *go_actor.DispatchMessage
 	nextSession int32
 
 	workId     int
@@ -27,7 +27,7 @@ type SingleGoroutine struct {
 	waitAmount int
 
 	responseWait map[int]SingleGoroutineResponseInfo
-	responseMsg  *gactor.DispatchMessage
+	responseMsg  *go_actor.DispatchMessage
 }
 
 func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
@@ -41,9 +41,9 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 		for !finish {
 			select {
 			case msg := <-executer.ch:
-				protocol := msg.Headers.GetInt(gactor.HeaderIdProtocol)
-				if protocol == gactor.ProtocolResponse {
-					session := msg.Headers.GetInt(gactor.HeaderIdSession)
+				protocol := msg.Headers.GetInt(go_actor.HeaderIdProtocol)
+				if protocol == go_actor.ProtocolResponse {
+					session := msg.Headers.GetInt(go_actor.HeaderIdSession)
 					responseWaitInfo, ok := executer.responseWait[session]
 					if ok {
 						if responseWaitInfo.asyncCB != nil {
@@ -76,10 +76,10 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	}
 }
 
-func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interface{}, *gactor.ActorError) {
+func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interface{}, *go_actor.ActorError) {
 	responseWaitInfo, ok := executer.responseWait[session]
 	if !ok {
-		return nil, gactor.ErrResponseMiss
+		return nil, go_actor.ErrResponseMiss
 	}
 
 	executer.waitAmount++
@@ -116,7 +116,7 @@ func (executer *SingleGoroutine) Start(ctx context.Context, initWork int) {
 	executer.nextSession = 0
 
 	executer.context = ctx
-	executer.ch = make(chan *gactor.DispatchMessage, 256)
+	executer.ch = make(chan *go_actor.DispatchMessage, 256)
 	executer.responseWait = make(map[int]SingleGoroutineResponseInfo)
 
 	executer.workAmount = initWork
@@ -132,18 +132,18 @@ func (executer *SingleGoroutine) Start(ctx context.Context, initWork int) {
 	executer.cond.L.Unlock()
 }
 
-func (executer *SingleGoroutine) OnMessage(msg *gactor.DispatchMessage) {
+func (executer *SingleGoroutine) OnMessage(msg *go_actor.DispatchMessage) {
 	executer.ch <- msg
 }
 
-func (executer *SingleGoroutine) OnResponse(session int, err *gactor.ActorError, data interface{}) {
-	msg := &gactor.DispatchMessage{
+func (executer *SingleGoroutine) OnResponse(session int, err *go_actor.ActorError, data interface{}) {
+	msg := &go_actor.DispatchMessage{
 		ResponseErr: err,
 		Content:     data,
 	}
 	msg.Headers.Put(
-		gactor.BuildHeaderInt(gactor.HeaderIdProtocol, gactor.ProtocolResponse),
-		gactor.BuildHeaderInt(gactor.HeaderIdSession, session),
+		go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
+		go_actor.BuildHeaderInt(go_actor.HeaderIdSession, session),
 	)
 	executer.ch <- msg
 }
@@ -157,7 +157,7 @@ func (executer *SingleGoroutine) NewSession() int {
 	return int(session)
 }
 
-func (executer *SingleGoroutine) StartWait(session int, asyncCB func(msg *gactor.DispatchMessage)) gactor.SessionCancel {
+func (executer *SingleGoroutine) StartWait(session int, asyncCB func(msg *go_actor.DispatchMessage)) go_actor.SessionCancel {
 	cancel := func() {
 		delete(executer.responseWait, session)
 	}

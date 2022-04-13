@@ -1,7 +1,7 @@
-package gactor
+package go_actor
 
 import (
-	message "github.com/lsg2020/gactor/pb"
+	message "github.com/lsg2020/go-actor/pb"
 )
 
 // 内部协议id

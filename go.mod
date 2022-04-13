@@ -1,4 +1,4 @@
-module github.com/lsg2020/gactor
+module github.com/lsg2020/go-actor
 
 go 1.17
 

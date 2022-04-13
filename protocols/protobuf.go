@@ -3,19 +3,19 @@ package protocols
 import (
 	"fmt"
 
-	"github.com/lsg2020/gactor"
+	go_actor "github.com/lsg2020/go-actor"
 	"google.golang.org/protobuf/proto"
 )
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
-func NewProtobuf(id int, opts ...gactor.ProtoOption) *Protobuf {
-	opts = append(opts, gactor.ProtoWithInterceptorSend(func(msg *gactor.DispatchMessage, handler gactor.ProtoHandler, args ...interface{}) {
-		requestCtx := msg.Headers.GetInterface(gactor.HeaderIdRequestProtoPackCtx)
-		msg.Headers.Put(gactor.BuildHeaderString(gactor.HeaderIdMethod, requestCtx.(*PbMethod).Name))
+func NewProtobuf(id int, opts ...go_actor.ProtoOption) *Protobuf {
+	opts = append(opts, go_actor.ProtoWithInterceptorSend(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) {
+		requestCtx := msg.Headers.GetInterface(go_actor.HeaderIdRequestProtoPackCtx)
+		msg.Headers.Put(go_actor.BuildHeaderString(go_actor.HeaderIdMethod, requestCtx.(*PbMethod).Name))
 	}))
 
 	proto := &Protobuf{
-		ProtoBaseImpl: gactor.ProtoBaseBuild(opts...),
+		ProtoBaseImpl: go_actor.ProtoBaseBuild(opts...),
 		protoId:       id,
 		cmds:          make(map[string]*PbMethod),
 	}
@@ -25,13 +25,13 @@ func NewProtobuf(id int, opts ...gactor.ProtoOption) *Protobuf {
 
 type PbMethod struct {
 	Name string
-	CB   gactor.ProtoHandler
+	CB   go_actor.ProtoHandler
 	Req  func() proto.Message
 	Rsp  func() proto.Message
 }
 
 type Protobuf struct {
-	gactor.ProtoBaseImpl
+	go_actor.ProtoBaseImpl
 	protoId int
 
 	cmds map[string]*PbMethod
@@ -45,7 +45,7 @@ func (p *Protobuf) Name() string {
 	return "protobuf"
 }
 
-func (p *Protobuf) Register(cmd string, cb gactor.ProtoHandler, extend ...interface{}) {
+func (p *Protobuf) Register(cmd string, cb go_actor.ProtoHandler, extend ...interface{}) {
 	p.cmds[cmd] = &PbMethod{
 		Name: cmd,
 		CB:   cb,
@@ -54,75 +54,75 @@ func (p *Protobuf) Register(cmd string, cb gactor.ProtoHandler, extend ...interf
 	}
 }
 
-func (p *Protobuf) OnMessage(msg *gactor.DispatchMessage) {
+func (p *Protobuf) OnMessage(msg *go_actor.DispatchMessage) {
 	datas, responseCtx, err := p.UnPack(nil, msg)
 	if err != nil {
-		if msg.Headers.GetInt(gactor.HeaderIdSession) != 0 {
+		if msg.Headers.GetInt(go_actor.HeaderIdSession) != 0 {
 			msg.Response(err)
 		} else {
 			msg.System.Logger().Errorf("proto %d unpack error:%s\n", p.protoId, err.Error())
 		}
 		return
 	}
-	msg.Headers.Put(gactor.BuildHeaderInterfaceRaw(gactor.HeaderIdRequestProtoPackCtx, responseCtx, true))
+	msg.Headers.Put(go_actor.BuildHeaderInterfaceRaw(go_actor.HeaderIdRequestProtoPackCtx, responseCtx, true))
 	cmd := responseCtx.(*PbMethod)
 	msg.Content = datas
 
 	p.Trigger(cmd.CB, msg, msg.Content.([]interface{})...)
 }
 
-func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *gactor.ActorError) {
+func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {
 	if ctx != nil {
 		// response msg
 		if len(args) != 1 {
-			return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "params len err")
+			return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "params len err")
 		}
 
 		msg, ok := args[0].(proto.Message)
 		if !ok {
-			return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "type err")
+			return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "type err")
 		}
 		buf, err := proto.Marshal(msg)
 		if err != nil {
-			return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, err.Error())
+			return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, err.Error())
 		}
 		return buf, nil, nil
 	}
 
 	// request msg
 	if len(args) != 2 {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "params len err")
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "params len err")
 	}
 
 	method, ok := args[0].(string)
 	if !ok {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "type err")
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "type err")
 	}
 	msg, ok := args[1].(proto.Message)
 	if !ok {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "type err")
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "type err")
 	}
 	buf, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, err.Error())
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, err.Error())
 	}
 
 	cmd := p.cmds[method]
 	if cmd == nil {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodeCmdNotExists, fmt.Sprintf("method:%s not exists", method))
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodeCmdNotExists, fmt.Sprintf("method:%s not exists", method))
 	}
 
 	return buf, cmd, nil
 }
 
-func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, interface{}, *gactor.ActorError) {
+func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, interface{}, *go_actor.ActorError) {
 	if ctx != nil {
 		var buf []byte
 		if args != nil {
 			var ok bool
 			buf, ok = args.([]byte)
 			if !ok {
-				return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "content err")
+				return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "content err")
 			}
 		}
 
@@ -130,33 +130,33 @@ func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, int
 		rsp := ctx.(*PbMethod).Rsp()
 		err := proto.Unmarshal(buf, rsp)
 		if err != nil {
-			return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, err.Error())
+			return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, err.Error())
 		}
 		return []interface{}{rsp}, nil, nil
 	}
 
-	msg, ok := args.(*gactor.DispatchMessage)
+	msg, ok := args.(*go_actor.DispatchMessage)
 	if !ok {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "type err")
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "type err")
 	}
 	var buf []byte
 	if msg.Content != nil {
 		var ok bool
 		buf, ok = msg.Content.([]byte)
 		if !ok {
-			return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, "content err")
+			return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, "content err")
 		}
 	}
 
-	cmd := p.cmds[msg.Headers.GetStr(gactor.HeaderIdMethod)]
+	cmd := p.cmds[msg.Headers.GetStr(go_actor.HeaderIdMethod)]
 	if cmd == nil {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodeCmdNotExists, "method not exists: "+msg.Headers.GetStr(gactor.HeaderIdMethod))
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodeCmdNotExists, "method not exists: "+msg.Headers.GetStr(go_actor.HeaderIdMethod))
 	}
 
 	req := cmd.Req()
 	err := proto.Unmarshal(buf, req)
 	if err != nil {
-		return nil, nil, gactor.ErrorActor(gactor.ErrCodePackErr, err.Error())
+		return nil, nil, go_actor.ErrorActor(go_actor.ErrCodePackErr, err.Error())
 	}
 	return []interface{}{req}, cmd, nil
 }

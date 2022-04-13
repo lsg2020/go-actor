@@ -1,22 +1,20 @@
 package protocols
 
-import (
-	"github.com/lsg2020/gactor"
-)
+import go_actor "github.com/lsg2020/go-actor"
 
-func NewRaw(id int, opts ...gactor.ProtoOption) *Raw {
+func NewRaw(id int, opts ...go_actor.ProtoOption) *Raw {
 	return &Raw{
-		ProtoBaseImpl: gactor.ProtoBaseBuild(opts...),
+		ProtoBaseImpl: go_actor.ProtoBaseBuild(opts...),
 		protoId:       id,
-		cmds:          make(map[string]gactor.ProtoHandler),
+		cmds:          make(map[string]go_actor.ProtoHandler),
 	}
 }
 
 type Raw struct {
-	gactor.ProtoBaseImpl
+	go_actor.ProtoBaseImpl
 	protoId int
 
-	cmds map[string]gactor.ProtoHandler
+	cmds map[string]go_actor.ProtoHandler
 }
 
 func (raw *Raw) Id() int {
@@ -27,11 +25,11 @@ func (raw *Raw) Name() string {
 	return "raw"
 }
 
-func (raw *Raw) Register(cmd string, cb gactor.ProtoHandler, extend ...interface{}) {
+func (raw *Raw) Register(cmd string, cb go_actor.ProtoHandler, extend ...interface{}) {
 	raw.cmds[cmd] = cb
 }
 
-func (raw *Raw) OnMessage(msg *gactor.DispatchMessage) {
+func (raw *Raw) OnMessage(msg *go_actor.DispatchMessage) {
 	datas, _, _ := raw.UnPack(nil, msg.Content)
 	msg.Content = datas[1:]
 
@@ -45,10 +43,10 @@ func (raw *Raw) OnMessage(msg *gactor.DispatchMessage) {
 	raw.Trigger(cb, msg, msg.Content.([]interface{})...)
 }
 
-func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *gactor.ActorError) {
+func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {
 	return args, nil, nil
 }
 
-func (raw *Raw) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *gactor.ActorError) {
+func (raw *Raw) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *go_actor.ActorError) {
 	return pack.([]interface{}), nil, nil
 }
