@@ -13,6 +13,9 @@ type SingleGoroutineResponseInfo struct {
 	asyncCB func(msg *gactor.DispatchMessage)
 }
 
+// SingleGoroutine 是一个单协执行器
+// 注册在该执行器上的actor消息同时只会有一个协程运行
+// 并支持协程的同步等待
 type SingleGoroutine struct {
 	context     context.Context
 	cond        *sync.Cond

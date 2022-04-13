@@ -94,11 +94,11 @@ func genMessageName(msg *protogen.Message) protogen.GoIdent {
 }
 
 func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
-	g.P("type ", srv.GoName, "Server struct {")
+	g.P("type ", srv.GoName, "Proto struct {")
 	g.P("s ", srv.GoName, "Interface")
 	g.P("}")
 
-	g.P("func (s *", srv.GoName, "Server) register(p ", gactorPackage.Ident("Proto"), ") {")
+	g.P("func (s *", srv.GoName, "Proto) register(p ", gactorPackage.Ident("Proto"), ") {")
 	for _, method := range srv.Methods {
 		if method.Desc.IsStreamingClient() || method.Desc.IsStreamingServer() {
 			continue
@@ -149,7 +149,7 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 				", actor ", gactorPackage.Ident("Actor"),
 				", dest *", gactorPackage.Ident("ActorAddr"),
 				", req *", genMessageName(method.Input),
-				", options ", gactorPackage.Ident("Headers"),
+				", options *", gactorPackage.Ident("CallOptions"),
 				") *", gactorPackage.Ident("ActorError"), " {",
 			)
 			g.P("err := actor.SendProto(system, dest, client.Proto.Id(), options, \"", srv.GoName, ".", method.GoName, "\", req)")
@@ -164,7 +164,7 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 				", actor ", gactorPackage.Ident("Actor"),
 				", dest *", gactorPackage.Ident("ActorAddr"),
 				", req *", genMessageName(method.Input),
-				", options ", gactorPackage.Ident("Headers"),
+				", options *", gactorPackage.Ident("CallOptions"),
 				") (*", genMessageName(method.Output), ", *", gactorPackage.Ident("ActorError"), ") {",
 			)
 			g.P("rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, \"", srv.GoName, ".", method.GoName, "\", req)")
@@ -180,10 +180,9 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 }
 
 func genConstructor(g *protogen.GeneratedFile, srv *protogen.Service) {
-	g.P("func New", srv.GoName, "Server(s ", srv.GoName, "Interface, proto ", gactorPackage.Ident("Proto"), ") *", srv.GoName, "Server {")
-	g.P("    server := &", srv.GoName, "Server{s: s}")
-	g.P("    server.register(proto)")
-	g.P("    return server")
+	g.P("func Register", srv.GoName, "(s ", srv.GoName, "Interface, proto ", gactorPackage.Ident("Proto"), ") {")
+	g.P("    reg := &", srv.GoName, "Proto{s: s}")
+	g.P("    reg.register(proto)")
 	g.P("}")
 
 	g.P("func New", srv.GoName, "Client(proto ", gactorPackage.Ident("Proto"), ") *", srv.GoName, "Client {")

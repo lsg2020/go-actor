@@ -6,28 +6,42 @@ import (
 	"time"
 )
 
+// ActorInstance actor实例需要实现的接口,均在actor绑定的执行器中被执行
 type ActorInstance interface {
 	OnInit(actor Actor)
 	OnRelease(actor Actor)
 }
 
+// ActorHandle actor在节点下的地址,节点内唯一
 type ActorHandle uint32
 
+// ActorAddr actor在每个ActorSystem中的唯一地址
 type ActorAddr struct {
 	NodeInstanceId uint64
 	Handle         ActorHandle
 }
 
+type CallOptions struct {
+	Headers []Header
+}
+
+// Callback actor消息回调函数
 type Callback func(msg *DispatchMessage)
+
+// Actor actor操作接口
 type Actor interface {
 	Instance() ActorInstance
 	Callback() Callback
 	Logger() Logger
 
+	// Dispatch 接收到消息准备分发
 	Dispatch(system *ActorSystem, msg *DispatchMessage)
-	SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options Headers) (SessionCancel, *ActorError)
-	SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options Headers, data ...interface{}) *ActorError
-	CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options Headers, data ...interface{}) ([]interface{}, *ActorError)
+	// SendTo 发送消息接口, destination需要注册在同一ActorSystem下的任意节点
+	SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) (SessionCancel, *ActorError)
+	// SendProto 根据协议id发送不需要返回的消息
+	SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) *ActorError
+	// CallProto 根据协议id发送需要同步等待返回的消息
+	CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, *ActorError)
 
 	Kill()
 	Sleep(d time.Duration)
@@ -35,6 +49,7 @@ type Actor interface {
 	Exec(f interface{}, args ...interface{})
 }
 
+// actor接口的实现
 type actorImpl struct {
 	instance ActorInstance
 	executer Executer
@@ -64,7 +79,7 @@ func (a *actorImpl) Callback() Callback {
 	return a.cb
 }
 
-func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options Headers) (SessionCancel, *ActorError) {
+func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) (SessionCancel, *ActorError) {
 	var header Headers
 	header = header.Put(
 		BuildHeaderInt(HeaderIdProtocol, proto.Id()),
@@ -78,8 +93,8 @@ func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Pr
 	if requestCtx != nil {
 		header = header.Put(BuildHeaderInterfaceRaw(HeaderIdRequestProtoPackCtx, requestCtx, true))
 	}
-	if options != nil {
-		header = header.Put(options...)
+	if options != nil && options.Headers != nil {
+		header = header.Put(options.Headers...)
 	}
 
 	response := a.response
@@ -129,7 +144,7 @@ func (a *actorImpl) getProto(id int) Proto {
 	return nil
 }
 
-func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options Headers, data ...interface{}) *ActorError {
+func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) *ActorError {
 	proto := a.getProto(protocol)
 	if proto == nil {
 		return ErrProtocolNotExists
@@ -143,7 +158,7 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 	return err
 }
 
-func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options Headers, data ...interface{}) ([]interface{}, *ActorError) {
+func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, *ActorError) {
 	proto := a.getProto(protocol)
 	if proto == nil {
 		return nil, ErrProtocolNotExists
@@ -286,6 +301,7 @@ func (ops *actorOptions) init() {
 
 }
 
+// ActorOption actor的创建参数
 type ActorOption func(ops *actorOptions)
 
 func ActorWithLogger(logger Logger) ActorOption {
@@ -306,6 +322,7 @@ func ActorWithInitCB(cb func()) ActorOption {
 	}
 }
 
+// NewActor 创建一个actor,立即返回,如果需要等待创建完成可以使用 ActorWithInitCB
 func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Actor {
 	ops := &actorOptions{}
 	for _, opt := range options {

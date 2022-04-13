@@ -10,11 +10,13 @@ import (
 	etcd "go.etcd.io/etcd/client/v3"
 )
 
+// Selector 根据名字获取Actor地址
 type Selector interface {
 	Addr() *ActorAddr
 	Close()
 }
 
+// NewRandomSelector 在同名的actor中随机获取
 func NewRandomSelector(system *ActorSystem, name string) (Selector, error) {
 	selector, err := newEtcdSelector(system, name)
 	if err != nil {
@@ -24,6 +26,7 @@ func NewRandomSelector(system *ActorSystem, name string) (Selector, error) {
 	return selector, nil
 }
 
+// NewLoopSelector 在同名的actor中顺序获取
 func NewLoopSelector(system *ActorSystem, name string) (Selector, error) {
 	selector, err := newEtcdSelector(system, name)
 	if err != nil {
@@ -33,6 +36,7 @@ func NewLoopSelector(system *ActorSystem, name string) (Selector, error) {
 	return &loopSelector{etcd: selector}, nil
 }
 
+// 查询并监听etcd的actor名字注册
 func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 	preFixName := fmt.Sprintf("/%s/%s/names/%s/", system.options.etcdPrefix, system.options.name, name)
 	rsp, err := system.etcdClient.Get(system.Context(), preFixName, etcd.WithPrefix())

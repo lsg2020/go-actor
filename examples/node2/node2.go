@@ -18,24 +18,19 @@ var single *executer.SingleGoroutine
 var selector gactor.Selector
 var client *hello.HelloServiceClient
 
-type HelloActor struct {
-	actor gactor.Actor
-	addr  *gactor.ActorAddr
+type NodeActor struct {
 }
 
-func (p *HelloActor) OnInit(a gactor.Actor) {
-	p.actor = a
-
+func (p *NodeActor) OnInit(a gactor.Actor) {
 	for i := int32(0); i < 40; i++ {
 		client.Send(system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
-		rsp, err := client.CallSourceAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
+		rsp, err := client.TestCallAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		log.Println("test call resource", proto.MarshalTextString(rsp), err)
 		a.Sleep(time.Second)
 	}
 }
 
-func (p *HelloActor) OnRelease(a gactor.Actor) {
-
+func (p *NodeActor) OnRelease(a gactor.Actor) {
 }
 
 func main() {
@@ -57,7 +52,7 @@ func main() {
 	single.Start(context.Background(), 1)
 
 	proto := protocols.NewProtobuf(1)
-	_ = hello.NewHelloServiceServer(nil, proto)
+	hello.RegisterHelloService(nil, proto)
 	client = hello.NewHelloServiceClient(proto)
 
 	selector, err = gactor.NewRandomSelector(system, "hello")
@@ -66,7 +61,7 @@ func main() {
 	}
 
 	for i := 0; i < 10; i++ {
-		gactor.NewActor(&HelloActor{}, single, gactor.ActorWithProto(proto))
+		gactor.NewActor(&NodeActor{}, single, gactor.ActorWithProto(proto))
 	}
 
 	select {

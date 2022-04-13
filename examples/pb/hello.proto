@@ -8,7 +8,7 @@ service HelloService {
     rpc Send(Request) returns (Empty) {}
 
     rpc Add(Request) returns (Response) {}
-    rpc CallSourceAdd(Request) returns (Response) {}
+    rpc TestCallAdd(Request) returns (Response) {}
 }
 
 message Empty {

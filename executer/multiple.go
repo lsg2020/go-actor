@@ -13,6 +13,8 @@ type MultipleGoroutineResponseInfo struct {
 	asyncCB func(msg *gactor.DispatchMessage)
 }
 
+// MultipleGoroutine 是一个多协执行器
+// 注册在该执行器上的actor每个请求消息均会创建一个协程来执行
 type MultipleGoroutine struct {
 	context     context.Context
 	nextSession int32

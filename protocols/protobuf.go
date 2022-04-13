@@ -7,6 +7,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// NewProtobuf 处理protobuf消息的打包/解包/注册分发
 func NewProtobuf(id int, opts ...gactor.ProtoOption) *Protobuf {
 	opts = append(opts, gactor.ProtoWithInterceptorSend(func(msg *gactor.DispatchMessage, handler gactor.ProtoHandler, args ...interface{}) {
 		requestCtx := msg.Headers.GetInterface(gactor.HeaderIdRequestProtoPackCtx)

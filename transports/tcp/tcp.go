@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// NewTcp 创建一个tcp传输器
 func NewTcp(listenAddr string, publicAddr string) *TcpTransport {
 	trans := &TcpTransport{
 		listenAddr: listenAddr,

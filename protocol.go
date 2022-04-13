@@ -4,11 +4,13 @@ import (
 	message "github.com/lsg2020/gactor/pb"
 )
 
+// 内部协议id
 const (
-	ProtocolResponse = 0xff
-	ProtocolSystem   = 0xfe
+	ProtocolResponse = 0xff // 回复消息id
+	ProtocolSystem   = 0xfe // 内置系统消息id
 )
 
+// DispatchMessage actor收发消息的载体,并存储一些上下文信息
 type DispatchMessage struct {
 	System *ActorSystem
 	Actor  Actor
@@ -21,6 +23,7 @@ type DispatchMessage struct {
 	DispatchResponse func(msg *DispatchMessage, err *ActorError, data interface{})
 }
 
+// Response 回复通知消息的接口
 func (msg *DispatchMessage) Response(err *ActorError, datas ...interface{}) {
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
@@ -115,8 +118,10 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 	return pb
 }
 
+// ProtoInterceptor 收发消息拦截器接口
 type ProtoInterceptor func(msg *DispatchMessage, handler ProtoHandler, args ...interface{})
 
+// ProtoInterceptorChain 合并多个拦截器,从第一个依次嵌套执行
 func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 	n := len(interceptors)
 
@@ -159,6 +164,7 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 
 type ProtoHandler func(msg *DispatchMessage, args ...interface{})
 
+// Proto 收发消息的打包/解包/注册分发
 type Proto interface {
 	Id() int
 	Name() string
@@ -167,34 +173,36 @@ type Proto interface {
 	UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *ActorError)
 	Register(name string, cb ProtoHandler, extend ...interface{})
 
+	// InterceptorSend 消息发送前的拦截器,方便设置自定义消息头/消息名称等信息
 	InterceptorSend() ProtoInterceptor
-	InterceptorRequest() ProtoInterceptor
+	// InterceptorDispatch 消息处理的拦截器,方便记录指标/设置调用链/过滤消息/设置上下文等
+	InterceptorDispatch() ProtoInterceptor
 }
 
 type ProtoBaseImpl struct {
-	sendInterceptor    ProtoInterceptor
-	requestInterceptor ProtoInterceptor
+	sendInterceptor     ProtoInterceptor
+	dispatchInterceptor ProtoInterceptor
 }
 
 func (p *ProtoBaseImpl) InterceptorSend() ProtoInterceptor {
 	return p.sendInterceptor
 }
 
-func (p *ProtoBaseImpl) InterceptorRequest() ProtoInterceptor {
-	return p.requestInterceptor
+func (p *ProtoBaseImpl) InterceptorDispatch() ProtoInterceptor {
+	return p.dispatchInterceptor
 }
 
 func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) {
-	if p.requestInterceptor == nil {
+	if p.dispatchInterceptor == nil {
 		handler(msg, args...)
 		return
 	}
-	p.requestInterceptor(msg, handler, args...)
+	p.dispatchInterceptor(msg, handler, args...)
 }
 
 type protoBaseOptions struct {
-	sends    []ProtoInterceptor
-	requests []ProtoInterceptor
+	sends     []ProtoInterceptor
+	dispatchs []ProtoInterceptor
 }
 
 type ProtoOption func(ops *protoBaseOptions)
@@ -207,7 +215,7 @@ func ProtoBaseBuild(opts ...ProtoOption) ProtoBaseImpl {
 
 	ret := ProtoBaseImpl{}
 	ret.sendInterceptor = ProtoInterceptorChain(data.sends...)
-	ret.requestInterceptor = ProtoInterceptorChain(data.requests...)
+	ret.dispatchInterceptor = ProtoInterceptorChain(data.dispatchs...)
 	return ret
 }
 
@@ -217,8 +225,8 @@ func ProtoWithInterceptorSend(interceptor ProtoInterceptor) ProtoOption {
 	}
 }
 
-func ProtoWithInterceptorRequest(interceptor ProtoInterceptor) ProtoOption {
+func ProtoWithInterceptorDispatch(interceptor ProtoInterceptor) ProtoOption {
 	return func(ops *protoBaseOptions) {
-		ops.requests = append(ops.requests, interceptor)
+		ops.dispatchs = append(ops.dispatchs, interceptor)
 	}
 }

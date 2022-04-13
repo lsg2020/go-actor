@@ -11,27 +11,26 @@ import (
 
 // HelloServiceInterface is the server API for HelloService service.
 type HelloServiceInterface interface {
-	// onlysend
+	// onlysend;test send protocol
 	OnSend(*gactor.DispatchMessage, *Request) *gactor.ActorError
 	OnAdd(*gactor.DispatchMessage, *Request) (*Response, *gactor.ActorError)
-	OnCallSourceAdd(*gactor.DispatchMessage, *Request) (*Response, *gactor.ActorError)
+	OnTestCallAdd(*gactor.DispatchMessage, *Request) (*Response, *gactor.ActorError)
 }
 
-func NewHelloServiceServer(s HelloServiceInterface, proto gactor.Proto) *HelloServiceServer {
-	server := &HelloServiceServer{s: s}
-	server.register(proto)
-	return server
+func RegisterHelloService(s HelloServiceInterface, proto gactor.Proto) {
+	reg := &HelloServiceProto{s: s}
+	reg.register(proto)
 }
 func NewHelloServiceClient(proto gactor.Proto) *HelloServiceClient {
 	client := &HelloServiceClient{Proto: proto}
 	return client
 }
 
-type HelloServiceServer struct {
+type HelloServiceProto struct {
 	s HelloServiceInterface
 }
 
-func (s *HelloServiceServer) register(p gactor.Proto) {
+func (s *HelloServiceProto) register(p gactor.Proto) {
 	p.Register(
 		"HelloService.Send",
 		func(ctx *gactor.DispatchMessage, args ...interface{}) {
@@ -60,9 +59,9 @@ func (s *HelloServiceServer) register(p gactor.Proto) {
 	)
 
 	p.Register(
-		"HelloService.CallSourceAdd",
+		"HelloService.TestCallAdd",
 		func(ctx *gactor.DispatchMessage, args ...interface{}) {
-			rsp, err := s.s.OnCallSourceAdd(ctx, args[0].(*Request))
+			rsp, err := s.s.OnTestCallAdd(ctx, args[0].(*Request))
 
 			if err != nil {
 				ctx.Response(err, nil)
@@ -80,13 +79,13 @@ type HelloServiceClient struct {
 	Proto gactor.Proto
 }
 
-func (client *HelloServiceClient) Send(system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options gactor.Headers) *gactor.ActorError {
+func (client *HelloServiceClient) Send(system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options *gactor.CallOptions) *gactor.ActorError {
 	err := actor.SendProto(system, dest, client.Proto.Id(), options, "HelloService.Send", req)
 
 	return err
 }
 
-func (client *HelloServiceClient) Add(ctx context.Context, system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options gactor.Headers) (*Response, *gactor.ActorError) {
+func (client *HelloServiceClient) Add(ctx context.Context, system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options *gactor.CallOptions) (*Response, *gactor.ActorError) {
 	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.Add", req)
 
 	if err != nil {
@@ -95,8 +94,8 @@ func (client *HelloServiceClient) Add(ctx context.Context, system *gactor.ActorS
 	return rsp[0].(*Response), nil
 }
 
-func (client *HelloServiceClient) CallSourceAdd(ctx context.Context, system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options gactor.Headers) (*Response, *gactor.ActorError) {
-	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.CallSourceAdd", req)
+func (client *HelloServiceClient) TestCallAdd(ctx context.Context, system *gactor.ActorSystem, actor gactor.Actor, dest *gactor.ActorAddr, req *Request, options *gactor.CallOptions) (*Response, *gactor.ActorError) {
+	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.TestCallAdd", req)
 
 	if err != nil {
 		return nil, err

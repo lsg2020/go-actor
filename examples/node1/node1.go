@@ -48,7 +48,7 @@ func (s *HelloService) OnAdd(ctx *gactor.DispatchMessage, req *hello.Request) (*
 	return &hello.Response{R: req.A + req.B}, nil
 }
 
-func (s *HelloService) OnCallSourceAdd(ctx *gactor.DispatchMessage, req *hello.Request) (*hello.Response, *gactor.ActorError) {
+func (s *HelloService) OnTestCallAdd(ctx *gactor.DispatchMessage, req *hello.Request) (*hello.Response, *gactor.ActorError) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, proto.MarshalTextString(req))
 
@@ -58,8 +58,8 @@ func (s *HelloService) OnCallSourceAdd(ctx *gactor.DispatchMessage, req *hello.R
 
 func main() {
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
-	var err error
 	trans := tcp.NewTcp("0.0.0.0:8081", "127.0.0.1:8081")
+	var err error
 	system, err = gactor.NewActorSystem(
 		gactor.WithName("hello"),
 		gactor.WithInstanceId(1),
@@ -75,7 +75,7 @@ func main() {
 	single.Start(context.Background(), 1)
 
 	proto := protocols.NewProtobuf(1)
-	_ = hello.NewHelloServiceServer(&HelloService{}, proto)
+	hello.RegisterHelloService(&HelloService{}, proto)
 	client = hello.NewHelloServiceClient(proto)
 
 	selector, err = gactor.NewRandomSelector(system, "hello")

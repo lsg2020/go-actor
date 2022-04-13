@@ -2,13 +2,14 @@ package gactor
 
 import "reflect"
 
+// NewProtoSystem 创建一个内部协议,处理init/kill/exec
 func NewProtoSystem(logger Logger) *ProtoSystem {
 	p := &ProtoSystem{
 		ProtoBaseImpl: ProtoBaseBuild(
 			ProtoWithInterceptorSend(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
 				msg.Headers.Put(BuildHeaderString(HeaderIdMethod, msg.Content.([]interface{})[0].(string)))
 			}),
-			ProtoWithInterceptorRequest(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
+			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Errorf("proto recovery cmd:%s args:%#v", msg.Headers.GetStr(HeaderIdMethod), args)

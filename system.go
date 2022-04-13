@@ -11,21 +11,22 @@ import (
 	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
+// ActorSystem actor的管理器,及提供对外访问同system下的actor的机制
 type ActorSystem struct {
-	instanceID uint64
-	options    *actorSystemOptions
-	handle     systemHandle
+	instanceID uint64              // ActorSystem实例id,需要全局唯一
+	options    *actorSystemOptions // ActorSystem的创建参数
+	handle     systemHandle        // 本地actor的管理
 	context    context.Context
 	cancel     context.CancelFunc
 
-	etcdClient  *etcd.Client
+	etcdClient  *etcd.Client // 同一ActorSystem需要连接相同的etcd
 	etcdSession *concurrency.Session
 
 	namesMutex sync.Mutex
-	names      map[ActorHandle][]string
+	names      map[ActorHandle][]string // 本地actor注册的名字信息
 
 	nodeMutex sync.Mutex
-	nodes     []*ActorNodeConfig
+	nodes     []*ActorNodeConfig // 同ActorSystem的其他节点地址信息
 }
 
 func NewActorSystem(opts ...ActorSystemOption) (*ActorSystem, error) {
@@ -81,6 +82,7 @@ type ActorNodeConfig struct {
 	Transports map[string]string
 }
 
+// NodeConfig 根据instanceId获取同一ActorSystem的其他节点信息
 func (system *ActorSystem) NodeConfig(instanceId uint64) *ActorNodeConfig {
 	system.nodeMutex.Lock()
 	defer system.nodeMutex.Unlock()
@@ -94,6 +96,7 @@ func (system *ActorSystem) NodeConfig(instanceId uint64) *ActorNodeConfig {
 	return nil
 }
 
+// 注册并监听其他节点地址信息
 func (system *ActorSystem) initEtcd() error {
 	etcdClient, err := etcd.New(etcd.Config{
 		Endpoints:   system.options.etcd,
@@ -197,6 +200,7 @@ func (system *ActorSystem) InstanceID() uint64 {
 	return system.instanceID
 }
 
+// Register 注册actor到ActorSystem上,只有在ActorSystem上的Actor才可以被外部访问
 func (system *ActorSystem) Register(a Actor, names ...string) *ActorAddr {
 	handle := system.handle.handleRegister(a)
 
@@ -235,6 +239,7 @@ func (system *ActorSystem) UnRegister(a Actor) {
 	system.Logger().Infof("%s:%d actor unregister %v %v\n", system.options.name, system.instanceID, ret, handle)
 }
 
+// BindName 给Actor一个服务名
 func (system *ActorSystem) BindName(name string, addr *ActorAddr) error {
 	key := fmt.Sprintf("/%s/%s/names/%s/%d", system.options.etcdPrefix, system.options.name, name, addr.Handle)
 	v, err := json.Marshal(addr)
@@ -280,6 +285,7 @@ func (system *ActorSystem) IsRemoteActor(addr *ActorAddr) bool {
 	return system.instanceID != addr.NodeInstanceId
 }
 
+// Dispatch 分发ActorSystem本节点的Actor消息
 func (system *ActorSystem) Dispatch(msg *DispatchMessage) *ActorError {
 	destination := msg.Headers.GetAddr(HeaderIdDestination)
 	if destination == nil {
@@ -294,6 +300,7 @@ func (system *ActorSystem) Dispatch(msg *DispatchMessage) *ActorError {
 	return nil
 }
 
+// 传输一个消息,本节点直接分发,其他节点可以指定HeaderIdTransport传输类型,默认使用第一个
 func (system *ActorSystem) transport(destination *ActorAddr, msg *DispatchMessage) (SessionCancel, *ActorError) {
 	if system.IsRemoteActor(destination) {
 		if len(system.options.transports) == 0 {
