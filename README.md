@@ -31,7 +31,7 @@
 * `创建协议`
     * `protobuf`
         * go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-        * go install github.com/lsg2020/go-actor/tools/protoc-gen-gactor@latest
+        * go install github.com/lsg2020/go-actor/tools/protoc-gen-gactor
         * 定义协议文件[例如](https://github.com/lsg2020/go-actor/tree/master/examples/pb/hello.proto)
         * 生成 `protoc -I . --go_out=. --gactor_out=. *.proto`
 ```go

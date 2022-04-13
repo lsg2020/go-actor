@@ -5,7 +5,7 @@ package hello
 
 import (
 	context "context"
-	"github.com/lsg2020/go-actor"
+	go_actor "github.com/lsg2020/go-actor"
 	proto "google.golang.org/protobuf/proto"
 )
 
