@@ -3,6 +3,7 @@ module github.com/lsg2020/go-actor
 go 1.17
 
 require (
+	github.com/golang/protobuf v1.5.2
 	github.com/nats-io/nats.go v1.13.0
 	go.etcd.io/etcd/client/v3 v3.5.2
 	google.golang.org/protobuf v1.27.1
@@ -15,7 +16,6 @@ require (
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/nats-io/nkeys v0.3.0 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
