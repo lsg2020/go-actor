@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	go_actor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
@@ -38,19 +37,19 @@ type HelloService struct {
 
 func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) *go_actor.ActorError {
 	a := ctx.Actor.Instance().(*HelloActor)
-	log.Printf("OnSend in actor:%#v req:%#v\n", a.addr, proto.MarshalTextString(req))
+	log.Printf("OnSend in actor:%#v req:%#v\n", a.addr, req.String())
 	return nil
 }
 
 func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
 	a := ctx.Actor.Instance().(*HelloActor)
-	log.Printf("OnAdd in actor:%#v req:%#v\n", a.addr, proto.MarshalTextString(req))
+	log.Printf("OnAdd in actor:%#v req:%#v\n", a.addr, req.String())
 	return &hello.Response{R: req.A + req.B}, nil
 }
 
 func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
 	a := ctx.Actor.Instance().(*HelloActor)
-	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, proto.MarshalTextString(req))
+	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 
 	rsp, err := client.Add(system.Context(), system, a.actor, selector.Addr(), req, nil)
 	return rsp, err

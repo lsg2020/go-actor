@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	go_actor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
@@ -25,7 +24,7 @@ func (p *NodeActor) OnInit(a go_actor.Actor) {
 	for i := int32(0); i < 40; i++ {
 		client.Send(system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		rsp, err := client.TestCallAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
-		log.Println("test call resource", proto.MarshalTextString(rsp), err)
+		log.Println("test call resource", rsp, err)
 		a.Sleep(time.Second)
 	}
 }
