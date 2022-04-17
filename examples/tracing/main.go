@@ -54,8 +54,15 @@ func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.R
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 
-	rsp, err := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(go_actor.HeaderIdTracingSpan))
-	return rsp, err
+	rsp1, err1 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(go_actor.HeaderIdTracingSpan))
+	if err1 != nil {
+		return nil, err1
+	}
+	rsp2, err2 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(go_actor.HeaderIdTracingSpan))
+	if err2 != nil {
+		return nil, err2
+	}
+	return &hello.Response{R: rsp1.R + rsp2.R}, nil
 }
 
 type ClientActor struct {
