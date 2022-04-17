@@ -33,11 +33,13 @@ type HelloServiceProto struct {
 func (s *HelloServiceProto) register(p go_actor.Proto) {
 	p.Register(
 		"HelloService.Send",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
 			err := s.s.OnSend(ctx, args[0].(*Request))
 			if err != nil {
 				ctx.System.Logger().Errorf("message process error:%#v", err.Error())
+				return err
 			}
+			return nil
 		},
 		func() proto.Message { return new(Request) },
 		func() proto.Message { return new(Empty) },
@@ -45,7 +47,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 
 	p.Register(
 		"HelloService.Add",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
 			rsp, err := s.s.OnAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -53,6 +55,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 			} else {
 				ctx.Response(nil, rsp)
 			}
+			return nil
 		},
 		func() proto.Message { return new(Request) },
 		func() proto.Message { return new(Response) },
@@ -60,7 +63,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 
 	p.Register(
 		"HelloService.TestCallAdd",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
 			rsp, err := s.s.OnTestCallAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -68,6 +71,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 			} else {
 				ctx.Response(nil, rsp)
 			}
+			return nil
 		},
 		func() proto.Message { return new(Request) },
 		func() proto.Message { return new(Response) },

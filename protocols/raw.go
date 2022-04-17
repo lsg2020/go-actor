@@ -36,11 +36,14 @@ func (raw *Raw) OnMessage(msg *go_actor.DispatchMessage) {
 	cmd := datas[0].(string)
 	cb := raw.cmds[cmd]
 	if cb == nil { // nolint
-		msg.System.Logger().Warnf("raw:%d cmd not exists %s\n", raw.protoId, cmd)
+		msg.Actor.Logger().Warnf("raw:%d cmd not exists %s\n", raw.protoId, cmd)
 		return
 	}
 
-	raw.Trigger(cb, msg, msg.Content.([]interface{})...)
+	err := raw.Trigger(cb, msg, msg.Content.([]interface{})...)
+	if err != nil {
+		msg.Actor.Logger().Warnf("raw:%s msg error %s\n", cmd, err)
+	}
 }
 
 func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {

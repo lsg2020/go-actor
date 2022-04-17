@@ -6,16 +6,17 @@ import "reflect"
 func NewProtoSystem(logger Logger) *ProtoSystem {
 	p := &ProtoSystem{
 		ProtoBaseImpl: ProtoBaseBuild(
-			ProtoWithInterceptorSend(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
+			ProtoWithInterceptorCall(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
 				msg.Headers.Put(BuildHeaderString(HeaderIdMethod, msg.Content.([]interface{})[0].(string)))
+				return handler(msg, args...)
 			}),
-			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
+			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Errorf("proto recovery cmd:%s args:%#v", msg.Headers.GetStr(HeaderIdMethod), args)
 					}
 				}()
-				handler(msg, args...)
+				return handler(msg, args...)
 			}),
 		),
 	}
@@ -49,8 +50,14 @@ func (p *ProtoSystem) OnMessage(msg *DispatchMessage) {
 
 	cmd := datas[0].(string)
 	cb := p.cmds[cmd]
-	if cb != nil {
-		p.Trigger(cb, msg, datas[1:]...)
+	if cb == nil {
+		msg.Actor.Logger().Errorf("system message cmd:%s not exists\n", cmd)
+		return
+	}
+
+	err := p.Trigger(cb, msg, datas[1:]...)
+	if err != nil {
+		msg.Actor.Logger().Errorf("system:%s msg error %s\n", cmd, err)
 	}
 }
 
@@ -69,7 +76,7 @@ func (p *ProtoSystem) init() {
 	p.Register("exec", p.onExec)
 }
 
-func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) {
+func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) *ActorError {
 	defer func() {
 		if r := recover(); r != nil {
 			msg.Actor.Logger().Errorf("actor start error %#v", r)
@@ -82,14 +89,16 @@ func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) {
 	if a.ops.initcb != nil {
 		a.ops.initcb()
 	}
+	return nil
 }
 
-func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) {
+func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) *ActorError {
 	a := msg.Actor.(*actorImpl)
 	a.onKill()
+	return nil
 }
 
-func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) {
+func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) *ActorError {
 	f := reflect.ValueOf(args[0])
 
 	rParams := make([]reflect.Value, len(args[1].([]interface{})))
@@ -97,4 +106,5 @@ func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) {
 		rParams[i] = reflect.ValueOf(p)
 	}
 	f.Call(rParams)
+	return nil
 }

@@ -36,8 +36,6 @@ type Actor interface {
 
 	// Dispatch 接收到消息准备分发
 	Dispatch(system *ActorSystem, msg *DispatchMessage)
-	// SendTo 发送消息接口, destination需要注册在同一ActorSystem下的任意节点
-	SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) (SessionCancel, *ActorError)
 	// SendProto 根据协议id发送不需要返回的消息
 	SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) *ActorError
 	// CallProto 根据协议id发送需要同步等待返回的消息
@@ -79,7 +77,7 @@ func (a *actorImpl) Callback() Callback {
 	return a.cb
 }
 
-func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) (SessionCancel, *ActorError) {
+func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
 	var header Headers
 	header = header.Put(
 		BuildHeaderInt(HeaderIdProtocol, proto.Id()),
@@ -109,30 +107,7 @@ func (a *actorImpl) SendTo(system *ActorSystem, destination *ActorAddr, proto Pr
 		RequestProto:     proto,
 		DispatchResponse: response,
 	}
-	interceptor := proto.InterceptorSend()
-	if interceptor != nil {
-		interceptor(msg, nil)
-	}
-
-	var cancel SessionCancel
-	if session != 0 {
-		cancel = a.executer.StartWait(session, nil)
-	}
-
-	cancelTrans, err := system.transport(destination, msg)
-	if err != nil {
-		return nil, err
-	}
-	if cancel != nil && cancelTrans != nil {
-		return func() {
-			cancel()
-			cancelTrans()
-		}, nil
-	}
-	if cancel != nil {
-		return cancel, nil
-	}
-	return cancelTrans, nil
+	return msg
 }
 
 func (a *actorImpl) getProto(id int) Proto {
@@ -150,12 +125,28 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 		return ErrProtocolNotExists
 	}
 
-	msgs, requestCtx, err := proto.Pack(nil, data...)
+	msg, requestCtx, err := proto.Pack(nil, data...)
 	if err != nil {
 		return err
 	}
-	_, err = a.SendTo(system, destination, proto, requestCtx, 0, msgs, options)
-	return err
+
+	sendPack := a.buildSendPack(destination, proto, requestCtx, 0, msg, options)
+	sendHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+		cancelTrans, err := system.transport(destination, msg)
+		if err != nil {
+			return err
+		}
+		if cancelTrans != nil {
+			defer cancelTrans()
+		}
+		return nil
+	}
+
+	interceptor := proto.InterceptorCall()
+	if interceptor != nil {
+		return interceptor(sendPack, sendHandler)
+	}
+	return sendHandler(sendPack)
 }
 
 func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, *ActorError) {
@@ -164,20 +155,40 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 		return nil, ErrProtocolNotExists
 	}
 
-	msgs, requestCtx, err := proto.Pack(nil, data...)
+	msg, requestCtx, err := proto.Pack(nil, data...)
 	if err != nil {
 		return nil, err
 	}
 	session := a.executer.NewSession()
-	cancel, err := a.SendTo(system, destination, proto, requestCtx, session, msgs, options)
-	if err != nil {
-		return nil, err
-	}
-	if cancel != nil {
-		defer cancel()
+
+	var rets interface{}
+	sendPack := a.buildSendPack(destination, proto, requestCtx, session, msg, options)
+	callHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+		cancelSession := a.executer.StartWait(session, nil)
+		if cancelSession != nil {
+			defer cancelSession()
+		}
+
+		cancelTrans, err := system.transport(destination, msg)
+		if err != nil {
+			return err
+		}
+		if cancelTrans != nil {
+			defer cancelTrans()
+		}
+		rets, err = a.executer.Wait(ctx, session)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
-	rets, err := a.executer.Wait(ctx, session)
+	interceptor := proto.InterceptorCall()
+	if interceptor != nil {
+		err = interceptor(sendPack, callHandler)
+	} else {
+		err = callHandler(sendPack)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -249,11 +260,18 @@ func (a *actorImpl) dispatchSystemProto(args ...interface{}) {
 		Headers: HeadersWrap{headers},
 		Content: data,
 	}
-	interceptor := a.protoSystem.InterceptorSend()
-	if interceptor != nil {
-		interceptor(msg, nil)
+
+	systemHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+		a.Dispatch(nil, msg)
+		return nil
 	}
-	a.Dispatch(nil, msg)
+
+	interceptor := a.protoSystem.InterceptorCall()
+	if interceptor != nil {
+		_ = interceptor(msg, systemHandler)
+	} else {
+		_ = systemHandler(msg)
+	}
 }
 
 func (a *actorImpl) Kill() {

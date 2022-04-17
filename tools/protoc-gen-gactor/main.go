@@ -106,12 +106,13 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 
 		g.P("p.Register(")
 		g.P("\"", srv.GoName, ".", method.GoName, "\",")
-		g.P("func(ctx *", gactorPackage.Ident("DispatchMessage"), ", args ... interface{}) {")
+		g.P("func(ctx *", gactorPackage.Ident("DispatchMessage"), ", args ... interface{}) *", gactorPackage.Ident("ActorError"), " {")
 
 		if methodOnlySend(method) {
 			g.P("err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
 			g.P("if err != nil {")
 			g.P("ctx.System.Logger().Errorf(\"message process error:%#v\", err.Error())")
+			g.P("return err")
 			g.P("}")
 		} else {
 			g.P("rsp, err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
@@ -123,6 +124,7 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 			g.P("}")
 		}
 
+		g.P("return nil")
 		g.P("},")
 		g.P("func() ", protoPackage.Ident("Message"), " { return new(", genMessageName(method.Input), ") },")
 		g.P("func() ", protoPackage.Ident("Message"), " { return new(", genMessageName(method.Output), ") },")

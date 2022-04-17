@@ -20,6 +20,8 @@ const (
 	HeaderIdTransSession        = 7
 	HeaderIdTransAddress        = 8
 	HeaderIdRequestProtoPackCtx = 9
+	HeaderIdTracingSpan         = 10
+	HeaderIdTracingSpanCarrier  = 11
 )
 
 type Header struct {

@@ -13,7 +13,6 @@ import (
 )
 
 var system *go_actor.ActorSystem
-var single *executer.SingleGoroutine
 var selector go_actor.Selector
 var client *hello.HelloServiceClient
 
@@ -70,7 +69,7 @@ func main() {
 		panic(err)
 	}
 
-	single = &executer.SingleGoroutine{}
+	single := &executer.SingleGoroutine{}
 	single.Start(context.Background(), 1)
 
 	proto := protocols.NewProtobuf(1)

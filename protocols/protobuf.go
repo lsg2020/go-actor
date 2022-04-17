@@ -9,13 +9,15 @@ import (
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
 func NewProtobuf(id int, opts ...go_actor.ProtoOption) *Protobuf {
-	opts = append(opts, go_actor.ProtoWithInterceptorSend(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) {
+	allopts := append(([]go_actor.ProtoOption)(nil), go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) *go_actor.ActorError {
 		requestCtx := msg.Headers.GetInterface(go_actor.HeaderIdRequestProtoPackCtx)
 		msg.Headers.Put(go_actor.BuildHeaderString(go_actor.HeaderIdMethod, requestCtx.(*PbMethod).Name))
+		return handler(msg, args...)
 	}))
+	allopts = append(allopts, opts...)
 
 	proto := &Protobuf{
-		ProtoBaseImpl: go_actor.ProtoBaseBuild(opts...),
+		ProtoBaseImpl: go_actor.ProtoBaseBuild(allopts...),
 		protoId:       id,
 		cmds:          make(map[string]*PbMethod),
 	}
@@ -60,7 +62,7 @@ func (p *Protobuf) OnMessage(msg *go_actor.DispatchMessage) {
 		if msg.Headers.GetInt(go_actor.HeaderIdSession) != 0 {
 			msg.Response(err)
 		} else {
-			msg.System.Logger().Errorf("proto %d unpack error:%s\n", p.protoId, err.Error())
+			msg.Actor.Logger().Errorf("proto %d unpack error:%s\n", p.protoId, err.Error())
 		}
 		return
 	}
@@ -68,7 +70,10 @@ func (p *Protobuf) OnMessage(msg *go_actor.DispatchMessage) {
 	cmd := responseCtx.(*PbMethod)
 	msg.Content = datas
 
-	p.Trigger(cmd.CB, msg, msg.Content.([]interface{})...)
+	err = p.Trigger(cmd.CB, msg, msg.Content.([]interface{})...)
+	if err != nil {
+		msg.Actor.Logger().Errorf("proto:%s msg error %s\n", cmd.Name, err)
+	}
 }
 
 func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {

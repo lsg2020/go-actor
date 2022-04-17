@@ -91,6 +91,9 @@ func TraceFrames(skip int) ErrFrames {
 }
 
 func (e *ActorError) Error() string {
+	if e == nil {
+		return ""
+	}
 	if e.Code < len(ErrorCodes) {
 		return fmt.Sprintf("code:[%d](%s) msg:%s stack:%s", e.Code, ErrorCodes[e.Code], e.Msg, e.Frames.String())
 	}

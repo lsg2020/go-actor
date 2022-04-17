@@ -38,6 +38,29 @@ func (msg *DispatchMessage) Response(err *ActorError, datas ...interface{}) {
 	msg.DispatchResponse(msg, nil, rsp)
 }
 
+func (msg *DispatchMessage) Extract(headerIds ...int) Headers {
+	var ret Headers
+	for _, id := range headerIds {
+		h := msg.Headers.Get(id)
+		if h != nil {
+			if ret == nil {
+				ret = make(Headers, 0, len(headerIds))
+			}
+			ret = append(ret, *h)
+		}
+	}
+	return ret
+}
+
+func (msg *DispatchMessage) ExtractEx(headerIds ...int) *CallOptions {
+	headers := msg.Extract(headerIds...)
+	if headers == nil {
+		return nil
+	}
+
+	return &CallOptions{Headers: headers}
+}
+
 func (msg *DispatchMessage) FromPB(pb *message.Message) {
 	msg.Headers.Cap(len(pb.Headers))
 	for _, header := range pb.Headers {
@@ -119,7 +142,7 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 }
 
 // ProtoInterceptor 收发消息拦截器接口
-type ProtoInterceptor func(msg *DispatchMessage, handler ProtoHandler, args ...interface{})
+type ProtoInterceptor func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError
 
 // ProtoInterceptorChain 合并多个拦截器,从第一个依次嵌套执行
 func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
@@ -127,26 +150,26 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 
 	if n > 1 {
 		lastI := n - 1
-		return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
+		return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
 			var (
 				chainHandler ProtoHandler
 				curI         int
 			)
 
-			chainHandler = func(msg *DispatchMessage, args ...interface{}) {
+			chainHandler = func(msg *DispatchMessage, args ...interface{}) *ActorError {
 				if curI == lastI {
 					if handler == nil {
-						return
+						return nil
 					}
-					handler(msg, args...)
-					return
+					return handler(msg, args...)
 				}
 				curI++
-				interceptors[curI](msg, chainHandler, args...)
+				err := interceptors[curI](msg, chainHandler, args...)
 				curI--
+				return err
 			}
 
-			interceptors[0](msg, chainHandler, args...)
+			return interceptors[0](msg, chainHandler, args...)
 		}
 	}
 
@@ -154,15 +177,15 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 		return interceptors[0]
 	}
 
-	return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) {
+	return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
 		if handler == nil {
-			return
+			return nil
 		}
-		handler(msg, args...)
+		return handler(msg, args...)
 	}
 }
 
-type ProtoHandler func(msg *DispatchMessage, args ...interface{})
+type ProtoHandler func(msg *DispatchMessage, args ...interface{}) *ActorError
 
 // Proto 收发消息的打包/解包/注册分发
 type Proto interface {
@@ -173,35 +196,34 @@ type Proto interface {
 	UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *ActorError)
 	Register(name string, cb ProtoHandler, extend ...interface{})
 
-	// InterceptorSend 消息发送前的拦截器,方便设置自定义消息头/消息名称等信息
-	InterceptorSend() ProtoInterceptor
+	// InterceptorCall 消息发送的拦截器,方便设置自定义消息头/消息名称等信息
+	InterceptorCall() ProtoInterceptor
 	// InterceptorDispatch 消息处理的拦截器,方便记录指标/设置调用链/过滤消息/设置上下文等
 	InterceptorDispatch() ProtoInterceptor
 }
 
 type ProtoBaseImpl struct {
-	sendInterceptor     ProtoInterceptor
+	callInterceptor     ProtoInterceptor
 	dispatchInterceptor ProtoInterceptor
 }
 
-func (p *ProtoBaseImpl) InterceptorSend() ProtoInterceptor {
-	return p.sendInterceptor
+func (p *ProtoBaseImpl) InterceptorCall() ProtoInterceptor {
+	return p.callInterceptor
 }
 
 func (p *ProtoBaseImpl) InterceptorDispatch() ProtoInterceptor {
 	return p.dispatchInterceptor
 }
 
-func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) {
+func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) *ActorError {
 	if p.dispatchInterceptor == nil {
-		handler(msg, args...)
-		return
+		return handler(msg, args...)
 	}
-	p.dispatchInterceptor(msg, handler, args...)
+	return p.dispatchInterceptor(msg, handler, args...)
 }
 
 type protoBaseOptions struct {
-	sends     []ProtoInterceptor
+	calls     []ProtoInterceptor
 	dispatchs []ProtoInterceptor
 }
 
@@ -214,14 +236,14 @@ func ProtoBaseBuild(opts ...ProtoOption) ProtoBaseImpl {
 	}
 
 	ret := ProtoBaseImpl{}
-	ret.sendInterceptor = ProtoInterceptorChain(data.sends...)
+	ret.callInterceptor = ProtoInterceptorChain(data.calls...)
 	ret.dispatchInterceptor = ProtoInterceptorChain(data.dispatchs...)
 	return ret
 }
 
-func ProtoWithInterceptorSend(interceptor ProtoInterceptor) ProtoOption {
+func ProtoWithInterceptorCall(interceptor ProtoInterceptor) ProtoOption {
 	return func(ops *protoBaseOptions) {
-		ops.sends = append(ops.sends, interceptor)
+		ops.calls = append(ops.calls, interceptor)
 	}
 }
 
