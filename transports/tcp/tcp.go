@@ -92,7 +92,7 @@ func (trans *TcpTransport) Init(system *go_actor.ActorSystem) error {
 	return nil
 }
 
-func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, *go_actor.ActorError) {
+func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, error) {
 	reqsession := msg.Headers.GetInt(go_actor.HeaderIdSession)
 	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
 	if destination == nil {
@@ -167,7 +167,7 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 		}
 	}()
 
-	response := func(msg *go_actor.DispatchMessage, err *go_actor.ActorError, data interface{}) {
+	response := func(msg *go_actor.DispatchMessage, err error, data interface{}) {
 		responseMsg := &go_actor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,

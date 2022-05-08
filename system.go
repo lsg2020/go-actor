@@ -286,7 +286,7 @@ func (system *ActorSystem) IsRemoteActor(addr *ActorAddr) bool {
 }
 
 // Dispatch 分发ActorSystem本节点的Actor消息
-func (system *ActorSystem) Dispatch(msg *DispatchMessage) *ActorError {
+func (system *ActorSystem) Dispatch(msg *DispatchMessage) error {
 	destination := msg.Headers.GetAddr(HeaderIdDestination)
 	if destination == nil {
 		return ErrNeedDestination
@@ -301,7 +301,7 @@ func (system *ActorSystem) Dispatch(msg *DispatchMessage) *ActorError {
 }
 
 // 传输一个消息,本节点直接分发,其他节点可以指定HeaderIdTransport传输类型,默认使用第一个
-func (system *ActorSystem) transport(destination *ActorAddr, msg *DispatchMessage) (SessionCancel, *ActorError) {
+func (system *ActorSystem) transport(destination *ActorAddr, msg *DispatchMessage) (SessionCancel, error) {
 	if system.IsRemoteActor(destination) {
 		if len(system.options.transports) == 0 {
 			return nil, ErrTransportMiss

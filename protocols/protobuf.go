@@ -9,7 +9,7 @@ import (
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
 func NewProtobuf(id int, opts ...go_actor.ProtoOption) *Protobuf {
-	allopts := append(([]go_actor.ProtoOption)(nil), go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) *go_actor.ActorError {
+	allopts := append(([]go_actor.ProtoOption)(nil), go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) error {
 		requestCtx := msg.Headers.GetInterface(go_actor.HeaderIdRequestProtoPackCtx)
 		msg.Headers.Put(go_actor.BuildHeaderString(go_actor.HeaderIdMethod, requestCtx.(*PbMethod).Name))
 		return handler(msg, args...)
@@ -76,7 +76,7 @@ func (p *Protobuf) OnMessage(msg *go_actor.DispatchMessage) {
 	}
 }
 
-func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {
+func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
 	if ctx != nil {
 		// response msg
 		if len(args) != 1 {
@@ -120,7 +120,7 @@ func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, inte
 	return buf, cmd, nil
 }
 
-func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, interface{}, *go_actor.ActorError) {
+func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, interface{}, error) {
 	if ctx != nil {
 		var buf []byte
 		if args != nil {

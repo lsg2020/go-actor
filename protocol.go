@@ -17,14 +17,14 @@ type DispatchMessage struct {
 
 	Headers     HeadersWrap
 	Content     interface{}
-	ResponseErr *ActorError
+	ResponseErr error
 
 	RequestProto     Proto
-	DispatchResponse func(msg *DispatchMessage, err *ActorError, data interface{})
+	DispatchResponse func(msg *DispatchMessage, err error, data interface{})
 }
 
 // Response 回复通知消息的接口
-func (msg *DispatchMessage) Response(err *ActorError, datas ...interface{}) {
+func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
 		return
@@ -133,16 +133,23 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 		pb.Payload = msg.Content.([]byte)
 	}
 	if msg.ResponseErr != nil {
-		pb.ResponseErr = &message.Error{
-			Code: int32(msg.ResponseErr.Code),
-			Msg:  msg.ResponseErr.Msg,
+		if err, ok := msg.ResponseErr.(*ActorError); ok {
+			pb.ResponseErr = &message.Error{
+				Code: int32(err.Code),
+				Msg:  err.Msg,
+			}
+		} else {
+			pb.ResponseErr = &message.Error{
+				Code: int32(ErrCodeSystem),
+				Msg:  err.Error(),
+			}
 		}
 	}
 	return pb
 }
 
 // ProtoInterceptor 收发消息拦截器接口
-type ProtoInterceptor func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError
+type ProtoInterceptor func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error
 
 // ProtoInterceptorChain 合并多个拦截器,从第一个依次嵌套执行
 func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
@@ -150,13 +157,13 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 
 	if n > 1 {
 		lastI := n - 1
-		return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
+		return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
 			var (
 				chainHandler ProtoHandler
 				curI         int
 			)
 
-			chainHandler = func(msg *DispatchMessage, args ...interface{}) *ActorError {
+			chainHandler = func(msg *DispatchMessage, args ...interface{}) error {
 				if curI == lastI {
 					if handler == nil {
 						return nil
@@ -177,7 +184,7 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 		return interceptors[0]
 	}
 
-	return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
+	return func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
 		if handler == nil {
 			return nil
 		}
@@ -185,15 +192,15 @@ func ProtoInterceptorChain(interceptors ...ProtoInterceptor) ProtoInterceptor {
 	}
 }
 
-type ProtoHandler func(msg *DispatchMessage, args ...interface{}) *ActorError
+type ProtoHandler func(msg *DispatchMessage, args ...interface{}) error
 
 // Proto 收发消息的打包/解包/注册分发
 type Proto interface {
 	Id() int
 	Name() string
 	OnMessage(msg *DispatchMessage)
-	Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *ActorError)
-	UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *ActorError)
+	Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error)
+	UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error)
 	Register(name string, cb ProtoHandler, extend ...interface{})
 
 	// InterceptorCall 消息发送的拦截器,方便设置自定义消息头/消息名称等信息
@@ -215,7 +222,7 @@ func (p *ProtoBaseImpl) InterceptorDispatch() ProtoInterceptor {
 	return p.dispatchInterceptor
 }
 
-func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) *ActorError {
+func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) error {
 	if p.dispatchInterceptor == nil {
 		return handler(msg, args...)
 	}

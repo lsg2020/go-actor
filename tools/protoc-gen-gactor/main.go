@@ -78,9 +78,9 @@ func genServiceInterface(g *protogen.GeneratedFile, srv *protogen.Service) {
 		}
 
 		if methodOnlySend(method) {
-			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") *", gactorPackage.Ident("ActorError"), "")
+			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") error")
 		} else {
-			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") (*", genMessageName(method.Output), ", *", gactorPackage.Ident("ActorError"), ")")
+			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") (*", genMessageName(method.Output), ", error)")
 		}
 	}
 	g.P("}")
@@ -106,7 +106,7 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 
 		g.P("p.Register(")
 		g.P("\"", srv.GoName, ".", method.GoName, "\",")
-		g.P("func(ctx *", gactorPackage.Ident("DispatchMessage"), ", args ... interface{}) *", gactorPackage.Ident("ActorError"), " {")
+		g.P("func(ctx *", gactorPackage.Ident("DispatchMessage"), ", args ... interface{}) error {")
 
 		if methodOnlySend(method) {
 			g.P("err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
@@ -152,7 +152,7 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 				", dest *", gactorPackage.Ident("ActorAddr"),
 				", req *", genMessageName(method.Input),
 				", options *", gactorPackage.Ident("CallOptions"),
-				") *", gactorPackage.Ident("ActorError"), " {",
+				") error {",
 			)
 			g.P("err := actor.SendProto(system, dest, client.Proto.Id(), options, \"", srv.GoName, ".", method.GoName, "\", req)")
 			g.P("")
@@ -167,7 +167,7 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 				", dest *", gactorPackage.Ident("ActorAddr"),
 				", req *", genMessageName(method.Input),
 				", options *", gactorPackage.Ident("CallOptions"),
-				") (*", genMessageName(method.Output), ", *", gactorPackage.Ident("ActorError"), ") {",
+				") (*", genMessageName(method.Output), ", error) {",
 			)
 			g.P("rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, \"", srv.GoName, ".", method.GoName, "\", req)")
 			g.P("")

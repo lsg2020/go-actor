@@ -28,23 +28,31 @@ type CallOptions struct {
 // Callback actor消息回调函数
 type Callback func(msg *DispatchMessage)
 
+type ExecCallback func() (interface{}, error)
+type ExecCallbackAsync func()
+
 // Actor actor操作接口
 type Actor interface {
 	Instance() ActorInstance
 	Callback() Callback
 	Logger() Logger
-
-	// Dispatch 接收到消息准备分发
-	Dispatch(system *ActorSystem, msg *DispatchMessage)
-	// SendProto 根据协议id发送不需要返回的消息
-	SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) *ActorError
-	// CallProto 根据协议id发送需要同步等待返回的消息
-	CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, *ActorError)
+	GetExecuter() Executer
 
 	Kill()
 	Sleep(d time.Duration)
 	Timeout(d time.Duration, cb func())
-	Exec(f interface{}, args ...interface{})
+	Exec(ctx context.Context, f ExecCallback) (interface{}, error)
+	ExecAsync(f ExecCallbackAsync)
+	GenSession() int
+	Wait(ctx context.Context, session int) (interface{}, error)
+	Wakeup(session int, err error, data interface{})
+
+	// Dispatch 接收到消息准备分发
+	Dispatch(system *ActorSystem, msg *DispatchMessage)
+	// SendProto 根据协议id发送不需要返回的消息
+	SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) error
+	// CallProto 根据协议id发送需要同步等待返回的消息
+	CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, error)
 }
 
 // actor接口的实现
@@ -69,12 +77,16 @@ func (a *actorImpl) Logger() Logger {
 	return a.ops.logger
 }
 
-func (a *actorImpl) setCallback(cb Callback) {
-	a.cb = cb
-}
-
 func (a *actorImpl) Callback() Callback {
 	return a.cb
+}
+
+func (a *actorImpl) GetExecuter() Executer {
+	return a.executer
+}
+
+func (a *actorImpl) response(msg *DispatchMessage, err error, data interface{}) {
+	a.executer.OnResponse(msg.Headers.GetInt(HeaderIdSession), err, data)
 }
 
 func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
@@ -119,7 +131,7 @@ func (a *actorImpl) getProto(id int) Proto {
 	return nil
 }
 
-func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) *ActorError {
+func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) error {
 	proto := a.getProto(protocol)
 	if proto == nil {
 		return ErrProtocolNotExists
@@ -131,7 +143,7 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 	}
 
 	sendPack := a.buildSendPack(destination, proto, requestCtx, 0, msg, options)
-	sendHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+	sendHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelTrans, err := system.transport(destination, msg)
 		if err != nil {
 			return err
@@ -149,7 +161,7 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 	return sendHandler(sendPack)
 }
 
-func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, *ActorError) {
+func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, error) {
 	proto := a.getProto(protocol)
 	if proto == nil {
 		return nil, ErrProtocolNotExists
@@ -163,7 +175,7 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 
 	var rets interface{}
 	sendPack := a.buildSendPack(destination, proto, requestCtx, session, msg, options)
-	callHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+	callHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelSession := a.executer.StartWait(session, nil)
 		if cancelSession != nil {
 			defer cancelSession()
@@ -197,27 +209,11 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 	return datas, err
 }
 
-func (a *actorImpl) response(msg *DispatchMessage, err *ActorError, data interface{}) {
-	a.executer.OnResponse(msg.Headers.GetInt(HeaderIdSession), err, data)
-}
-
 func (a *actorImpl) Dispatch(system *ActorSystem, msg *DispatchMessage) {
 	msg.System = system
 	msg.Actor = a
 
 	a.executer.OnMessage(msg)
-}
-
-func (a *actorImpl) onMessage(msg *DispatchMessage) {
-	protocol := msg.Headers.GetInt(HeaderIdProtocol)
-	p := a.getProto(protocol)
-	if p == nil {
-		a.Logger().Errorf("actor message protocol not exists %d", protocol)
-		return
-	}
-	msg.RequestProto = p
-
-	p.OnMessage(msg)
 }
 
 func (a *actorImpl) onRegister(system *ActorSystem, addr *ActorAddr) {
@@ -232,8 +228,18 @@ func (a *actorImpl) onUnregister(system *ActorSystem) {
 	a.actorMutex.Unlock()
 }
 
+func (a *actorImpl) onInit() {
+	a.Instance().OnInit(a)
+
+	if a.ops.initcb != nil {
+		a.ops.initcb()
+	}
+}
+
 func (a *actorImpl) onKill() {
 	defer func() {
+		a.cb = nil
+
 		a.actorMutex.Lock()
 		systems := make([]*ActorSystem, 0, len(a.addrs))
 		for k := range a.addrs {
@@ -261,7 +267,7 @@ func (a *actorImpl) dispatchSystemProto(args ...interface{}) {
 		Content: data,
 	}
 
-	systemHandler := func(msg *DispatchMessage, args ...interface{}) *ActorError {
+	systemHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		a.Dispatch(nil, msg)
 		return nil
 	}
@@ -278,8 +284,20 @@ func (a *actorImpl) Kill() {
 	a.dispatchSystemProto("kill")
 }
 
-func (a *actorImpl) Exec(f interface{}, args ...interface{}) {
-	a.dispatchSystemProto("exec", f, args)
+func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
+	session := a.executer.NewSession()
+	cancel := a.executer.StartWait(session, nil)
+	if cancel != nil {
+		defer cancel()
+	}
+
+	a.dispatchSystemProto("exec", session, f)
+	r, err := a.executer.Wait(ctx, session)
+	return r, err
+}
+
+func (a *actorImpl) ExecAsync(f ExecCallbackAsync) {
+	a.dispatchSystemProto("exec_async", f)
 }
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
@@ -304,6 +322,22 @@ func (a *actorImpl) Sleep(d time.Duration) {
 	})
 
 	_, _ = a.executer.Wait(context.Background(), session)
+}
+
+func (a *actorImpl) GenSession() int {
+	return a.executer.NewSession()
+}
+
+func (a *actorImpl) Wait(ctx context.Context, session int) (interface{}, error) {
+	cancel := a.executer.StartWait(session, nil)
+	if cancel != nil {
+		defer cancel()
+	}
+	return a.executer.Wait(ctx, session)
+}
+
+func (a *actorImpl) Wakeup(session int, err error, data interface{}) {
+	a.executer.OnResponse(session, err, data)
 }
 
 type actorOptions struct {
@@ -349,16 +383,26 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 	ops.init()
 
 	a := &actorImpl{
+		ops:      ops,
 		instance: inst,
 		executer: executer,
 		addrs:    make(map[*ActorSystem]*ActorAddr),
-		ops:      ops,
+	}
+
+	a.cb = func(msg *DispatchMessage) {
+		protocol := msg.Headers.GetInt(HeaderIdProtocol)
+		p := a.getProto(protocol)
+		if p == nil {
+			a.Logger().Errorf("actor message protocol not exists %d", protocol)
+			return
+		}
+		msg.RequestProto = p
+
+		p.OnMessage(msg)
 	}
 
 	a.protoSystem = NewProtoSystem(ops.logger)
 	a.ops.protos = append(a.ops.protos, a.protoSystem)
-
-	a.setCallback(a.onMessage)
 
 	// init message
 	a.dispatchSystemProto("init")

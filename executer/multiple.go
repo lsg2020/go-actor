@@ -38,7 +38,7 @@ func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *go_a
 	}
 }
 
-func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (interface{}, *go_actor.ActorError) {
+func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (interface{}, error) {
 	executer.waitMutex.Lock()
 	waitInfo, ok := executer.waitResponse[session]
 	executer.waitMutex.Unlock()
@@ -70,7 +70,7 @@ func (executer *MultipleGoroutine) OnMessage(msg *go_actor.DispatchMessage) {
 	}
 }
 
-func (executer *MultipleGoroutine) OnResponse(session int, err *go_actor.ActorError, data interface{}) {
+func (executer *MultipleGoroutine) OnResponse(session int, err error, data interface{}) {
 	executer.waitMutex.Lock()
 	waitInfo, ok := executer.waitResponse[session]
 	executer.waitMutex.Unlock()

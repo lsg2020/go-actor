@@ -1,16 +1,14 @@
 package go_actor
 
-import "reflect"
-
 // NewProtoSystem 创建一个内部协议,处理init/kill/exec
 func NewProtoSystem(logger Logger) *ProtoSystem {
 	p := &ProtoSystem{
 		ProtoBaseImpl: ProtoBaseBuild(
-			ProtoWithInterceptorCall(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
+			ProtoWithInterceptorCall(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
 				msg.Headers.Put(BuildHeaderString(HeaderIdMethod, msg.Content.([]interface{})[0].(string)))
 				return handler(msg, args...)
 			}),
-			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) *ActorError {
+			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
 				defer func() {
 					if r := recover(); r != nil {
 						logger.Errorf("proto recovery cmd:%s args:%#v", msg.Headers.GetStr(HeaderIdMethod), args)
@@ -61,11 +59,11 @@ func (p *ProtoSystem) OnMessage(msg *DispatchMessage) {
 	}
 }
 
-func (p *ProtoSystem) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *ActorError) {
+func (p *ProtoSystem) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
 	return args, nil, nil
 }
 
-func (p *ProtoSystem) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *ActorError) {
+func (p *ProtoSystem) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error) {
 	return pack.([]interface{}), nil, nil
 }
 
@@ -74,9 +72,10 @@ func (p *ProtoSystem) init() {
 	p.Register("init", p.onInit)
 	p.Register("kill", p.onKill)
 	p.Register("exec", p.onExec)
+	p.Register("exec_async", p.onExecAsync)
 }
 
-func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) *ActorError {
+func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) error {
 	defer func() {
 		if r := recover(); r != nil {
 			msg.Actor.Logger().Errorf("actor start error %#v", r)
@@ -84,27 +83,41 @@ func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) *ActorEr
 		}
 	}()
 	a := msg.Actor.(*actorImpl)
-	a.Instance().OnInit(a)
-
-	if a.ops.initcb != nil {
-		a.ops.initcb()
-	}
+	a.onInit()
 	return nil
 }
 
-func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) *ActorError {
+func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) error {
 	a := msg.Actor.(*actorImpl)
 	a.onKill()
 	return nil
 }
 
-func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) *ActorError {
-	f := reflect.ValueOf(args[0])
+func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) error {
+	/*
+		f := reflect.ValueOf(args[1])
+		rParams := make([]reflect.Value, len(args[2].([]interface{})))
+		for i, p := range args[2].([]interface{}) {
+			rParams[i] = reflect.ValueOf(p)
+		}
+		r := f.Call(rParams)
+	*/
 
-	rParams := make([]reflect.Value, len(args[1].([]interface{})))
-	for i, p := range args[1].([]interface{}) {
-		rParams[i] = reflect.ValueOf(p)
-	}
-	f.Call(rParams)
+	session := args[0].(int)
+	r, err := args[1].(ExecCallback)()
+	msg.Actor.GetExecuter().OnResponse(session, err, r)
+	return nil
+}
+
+func (p *ProtoSystem) onExecAsync(msg *DispatchMessage, args ...interface{}) error {
+	/*
+		f := reflect.ValueOf(args[0])
+		rParams := make([]reflect.Value, len(args[1].([]interface{})))
+		for i, p := range args[1].([]interface{}) {
+			rParams[i] = reflect.ValueOf(p)
+		}
+		f.Call(rParams)
+	*/
+	args[0].(ExecCallbackAsync)()
 	return nil
 }

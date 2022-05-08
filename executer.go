@@ -12,9 +12,9 @@ type Executer interface {
 	// OnMessage 接收到某个消息,分配执行
 	OnMessage(msg *DispatchMessage)
 	// OnResponse 接收到某个回复,触发唤醒
-	OnResponse(session int, err *ActorError, data interface{})
+	OnResponse(session int, err error, data interface{})
 	// StartWait 触发session同步/异步等待,返回取消函数
 	StartWait(session int, asyncCB func(msg *DispatchMessage)) SessionCancel
 	// Wait 同步等待session返回结果
-	Wait(ctx context.Context, session int) (interface{}, *ActorError)
+	Wait(ctx context.Context, session int) (interface{}, error)
 }

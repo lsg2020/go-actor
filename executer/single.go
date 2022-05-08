@@ -76,7 +76,7 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	}
 }
 
-func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interface{}, *go_actor.ActorError) {
+func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interface{}, error) {
 	responseWaitInfo, ok := executer.responseWait[session]
 	if !ok {
 		return nil, go_actor.ErrResponseMiss
@@ -136,7 +136,7 @@ func (executer *SingleGoroutine) OnMessage(msg *go_actor.DispatchMessage) {
 	executer.ch <- msg
 }
 
-func (executer *SingleGoroutine) OnResponse(session int, err *go_actor.ActorError, data interface{}) {
+func (executer *SingleGoroutine) OnResponse(session int, err error, data interface{}) {
 	msg := &go_actor.DispatchMessage{
 		ResponseErr: err,
 		Content:     data,

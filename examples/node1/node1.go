@@ -34,19 +34,19 @@ func (hello *HelloActor) OnRelease(a go_actor.Actor) {
 type HelloService struct {
 }
 
-func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) *go_actor.ActorError {
+func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) error {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnSend in actor:%#v req:%#v\n", a.addr, req.String())
 	return nil
 }
 
-func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
+func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnAdd in actor:%#v req:%#v\n", a.addr, req.String())
 	return &hello.Response{R: req.A + req.B}, nil
 }
 
-func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
+func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 

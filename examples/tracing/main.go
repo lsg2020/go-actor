@@ -38,19 +38,19 @@ func (hello *HelloActor) OnRelease(a go_actor.Actor) {
 type HelloService struct {
 }
 
-func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) *go_actor.ActorError {
+func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) error {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnSend in actor:%#v req:%#v\n", a.addr, req.String())
 	return nil
 }
 
-func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
+func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnAdd in actor:%#v req:%#v\n", a.addr, req.String())
 	return &hello.Response{R: req.A + req.B}, nil
 }
 
-func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, *go_actor.ActorError) {
+func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 
@@ -131,7 +131,7 @@ func main() {
 	}
 	opentracing.SetGlobalTracer(tracer)
 
-	proto := protocols.NewProtobuf(1, go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) *go_actor.ActorError {
+	proto := protocols.NewProtobuf(1, go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) error {
 		method := msg.Headers.GetStr(go_actor.HeaderIdMethod)
 		span := msg.Headers.GetInterface(go_actor.HeaderIdTracingSpan)
 		var spanContext opentracing.Span
@@ -147,7 +147,7 @@ func main() {
 		msg.Headers.Put(go_actor.BuildHeaderBytes(go_actor.HeaderIdTracingSpanCarrier, carrier.Bytes()))
 
 		return handler(msg, args...)
-	}), go_actor.ProtoWithInterceptorDispatch(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) *go_actor.ActorError {
+	}), go_actor.ProtoWithInterceptorDispatch(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) error {
 		spanCarrier := msg.Headers.GetBytes(go_actor.HeaderIdTracingSpanCarrier)
 		spanContext, err := tracer.Extract(opentracing.Binary, bytes.NewBuffer(spanCarrier))
 		if err != nil {

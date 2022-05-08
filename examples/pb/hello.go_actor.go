@@ -12,9 +12,9 @@ import (
 // HelloServiceInterface is the server API for HelloService service.
 type HelloServiceInterface interface {
 	// onlysend;test send protocol
-	OnSend(*go_actor.DispatchMessage, *Request) *go_actor.ActorError
-	OnAdd(*go_actor.DispatchMessage, *Request) (*Response, *go_actor.ActorError)
-	OnTestCallAdd(*go_actor.DispatchMessage, *Request) (*Response, *go_actor.ActorError)
+	OnSend(*go_actor.DispatchMessage, *Request) error
+	OnAdd(*go_actor.DispatchMessage, *Request) (*Response, error)
+	OnTestCallAdd(*go_actor.DispatchMessage, *Request) (*Response, error)
 }
 
 func RegisterHelloService(s HelloServiceInterface, proto go_actor.Proto) {
@@ -33,7 +33,7 @@ type HelloServiceProto struct {
 func (s *HelloServiceProto) register(p go_actor.Proto) {
 	p.Register(
 		"HelloService.Send",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			err := s.s.OnSend(ctx, args[0].(*Request))
 			if err != nil {
 				ctx.System.Logger().Errorf("message process error:%#v", err.Error())
@@ -47,7 +47,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 
 	p.Register(
 		"HelloService.Add",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			rsp, err := s.s.OnAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -63,7 +63,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 
 	p.Register(
 		"HelloService.TestCallAdd",
-		func(ctx *go_actor.DispatchMessage, args ...interface{}) *go_actor.ActorError {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			rsp, err := s.s.OnTestCallAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -83,13 +83,13 @@ type HelloServiceClient struct {
 	Proto go_actor.Proto
 }
 
-func (client *HelloServiceClient) Send(system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) *go_actor.ActorError {
+func (client *HelloServiceClient) Send(system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) error {
 	err := actor.SendProto(system, dest, client.Proto.Id(), options, "HelloService.Send", req)
 
 	return err
 }
 
-func (client *HelloServiceClient) Add(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, *go_actor.ActorError) {
+func (client *HelloServiceClient) Add(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, error) {
 	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.Add", req)
 
 	if err != nil {
@@ -98,7 +98,7 @@ func (client *HelloServiceClient) Add(ctx context.Context, system *go_actor.Acto
 	return rsp[0].(*Response), nil
 }
 
-func (client *HelloServiceClient) TestCallAdd(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, *go_actor.ActorError) {
+func (client *HelloServiceClient) TestCallAdd(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, error) {
 	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.TestCallAdd", req)
 
 	if err != nil {

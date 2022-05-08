@@ -9,5 +9,5 @@ type Transport interface {
 	// Init 初始化,监听端口等
 	Init(system *ActorSystem) error
 	// Send 发送一个消息到远程节点,一般需要设置HeaderIdDestination 目标节点的地址
-	Send(msg *DispatchMessage) (SessionCancel, *ActorError)
+	Send(msg *DispatchMessage) (SessionCancel, error)
 }

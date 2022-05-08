@@ -52,7 +52,7 @@ func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 
 	node := fmt.Sprintf("%d", system.InstanceID())
 
-	response := func(msg *go_actor.DispatchMessage, err *go_actor.ActorError, data interface{}) {
+	response := func(msg *go_actor.DispatchMessage, err error, data interface{}) {
 		responseMsg := &go_actor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,
@@ -109,7 +109,7 @@ func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 	return err
 }
 
-func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, *go_actor.ActorError) {
+func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, error) {
 	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
 	if destination == nil {
 		return nil, go_actor.ErrNeedDestination

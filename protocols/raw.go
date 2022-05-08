@@ -46,10 +46,10 @@ func (raw *Raw) OnMessage(msg *go_actor.DispatchMessage) {
 	}
 }
 
-func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, *go_actor.ActorError) {
+func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
 	return args, nil, nil
 }
 
-func (raw *Raw) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, *go_actor.ActorError) {
+func (raw *Raw) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error) {
 	return pack.([]interface{}), nil, nil
 }
