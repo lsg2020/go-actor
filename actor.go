@@ -359,13 +359,14 @@ func (a *actorImpl) Fork(f ForkCallback) {
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
 	session := a.executer.NewSession()
-	cancel := a.startWait(session, func(msg *DispatchMessage) {
+	var cancel SessionCancel
+	cancel = a.startWait(session, func(msg *DispatchMessage) {
+		cancel()
 		cb()
 	})
 
 	time.AfterFunc(d, func() {
 		a.executer.OnResponse(session, nil, nil)
-		cancel()
 	})
 }
 

@@ -22,8 +22,7 @@ func (a *Actor) OnInit(actor go_actor.Actor) {
 		}
 	})
 
-	actor.Fork(func() {
-		actor.Sleep(time.Second * 3)
+	actor.Timeout(time.Second*3, func() {
 		if a.Id != 0 {
 			actor.Kill()
 		}
