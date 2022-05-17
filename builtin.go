@@ -10,6 +10,9 @@ func NewProtoSystem(logger Logger) *ProtoSystem {
 			}),
 			ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
 				defer func() {
+					if msg.Actor != nil && msg.Actor.GetState() == ActorStateStop {
+						return
+					}
 					if r := recover(); r != nil {
 						logger.Errorf("proto recovery cmd:%s args:%#v", msg.Headers.GetStr(HeaderIdMethod), args)
 					}
@@ -72,7 +75,7 @@ func (p *ProtoSystem) init() {
 	p.Register("init", p.onInit)
 	p.Register("kill", p.onKill)
 	p.Register("exec", p.onExec)
-	p.Register("exec_async", p.onExecAsync)
+	p.Register("fork", p.onFork)
 }
 
 func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) error {
@@ -109,7 +112,7 @@ func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) error {
 	return nil
 }
 
-func (p *ProtoSystem) onExecAsync(msg *DispatchMessage, args ...interface{}) error {
+func (p *ProtoSystem) onFork(msg *DispatchMessage, args ...interface{}) error {
 	/*
 		f := reflect.ValueOf(args[0])
 		rParams := make([]reflect.Value, len(args[1].([]interface{})))
@@ -118,6 +121,6 @@ func (p *ProtoSystem) onExecAsync(msg *DispatchMessage, args ...interface{}) err
 		}
 		f.Call(rParams)
 	*/
-	args[0].(ExecCallbackAsync)()
+	args[0].(ForkCallback)()
 	return nil
 }

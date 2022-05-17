@@ -32,47 +32,54 @@ type SingleGoroutine struct {
 
 func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	finish := false
-	for !finish {
+	defer func() {
+		if finish {
+			return
+		}
+		go executer.work(nil, workId)
+		if r := recover(); r != nil {
+		}
+	}()
+
+	if initWg != nil {
 		executer.cond.L.Lock()
 		initWg.Done()
 		executer.cond.Wait()
+	}
 
-		executer.workId = workId
-		for !finish {
-			select {
-			case msg := <-executer.ch:
-				protocol := msg.Headers.GetInt(go_actor.HeaderIdProtocol)
-				if protocol == go_actor.ProtocolResponse {
-					session := msg.Headers.GetInt(go_actor.HeaderIdSession)
-					responseWaitInfo, ok := executer.responseWait[session]
-					if ok {
-						if responseWaitInfo.asyncCB != nil {
-							responseWaitInfo.asyncCB(msg)
-						} else {
-							executer.responseMsg = msg
-							responseWaitInfo.cond.Signal()
-							executer.cond.Wait()
-							executer.workId = workId
-						}
+	executer.workId = workId
+	for {
+		select {
+		case msg := <-executer.ch:
+			protocol := msg.Headers.GetInt(go_actor.HeaderIdProtocol)
+			if protocol == go_actor.ProtocolResponse {
+				session := msg.Headers.GetInt(go_actor.HeaderIdSession)
+				responseWaitInfo, ok := executer.responseWait[session]
+				if ok {
+					if responseWaitInfo.asyncCB != nil {
+						responseWaitInfo.asyncCB(msg)
 					} else {
-						msg.System.Logger().Warnf("dispatch response miss %d\n", session)
+						executer.responseMsg = msg
+						responseWaitInfo.cond.Signal()
+						executer.cond.Wait()
+						executer.workId = workId
 					}
-					continue
-				}
-
-				cb := msg.Actor.Callback()
-				if cb != nil {
-					cb(msg)
 				} else {
-					msg.System.Logger().Errorf("actor message callback not set\n")
+					msg.System.Logger().Warnf("dispatch response miss %d\n", session)
 				}
-			case <-executer.context.Done():
-				finish = true
-				break
+				continue
 			}
-		}
 
-		executer.cond.L.Unlock()
+			cb := msg.Actor.Callback()
+			if cb != nil {
+				cb(msg)
+			} else {
+				msg.System.Logger().Errorf("actor message callback not set\n")
+			}
+		case <-executer.context.Done():
+			finish = true
+			break
+		}
 	}
 }
 

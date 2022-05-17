@@ -29,7 +29,15 @@ type CallOptions struct {
 type Callback func(msg *DispatchMessage)
 
 type ExecCallback func() (interface{}, error)
-type ExecCallbackAsync func()
+type ForkCallback func()
+
+type ActorState int
+
+const (
+	ActorStateInit    ActorState = 1
+	ActorStateRunning ActorState = 2
+	ActorStateStop    ActorState = 3
+)
 
 // Actor actor操作接口
 type Actor interface {
@@ -37,12 +45,14 @@ type Actor interface {
 	Callback() Callback
 	Logger() Logger
 	GetExecuter() Executer
+	Context() context.Context
+	GetState() ActorState
 
 	Kill()
 	Sleep(d time.Duration)
 	Timeout(d time.Duration, cb func())
 	Exec(ctx context.Context, f ExecCallback) (interface{}, error)
-	ExecAsync(f ExecCallbackAsync)
+	Fork(f ForkCallback)
 	GenSession() int
 	Wait(ctx context.Context, session int) (interface{}, error)
 	Wakeup(session int, err error, data interface{})
@@ -59,9 +69,13 @@ type Actor interface {
 type actorImpl struct {
 	instance ActorInstance
 	executer Executer
+	context  context.Context
+	cancel   context.CancelFunc
+	state    ActorState
 
-	actorMutex sync.Mutex
-	addrs      map[*ActorSystem]*ActorAddr
+	actorMutex   sync.Mutex
+	addrs        map[*ActorSystem]*ActorAddr
+	waitSessions map[int]struct{}
 
 	cb          Callback
 	protoSystem Proto
@@ -83,6 +97,10 @@ func (a *actorImpl) Callback() Callback {
 
 func (a *actorImpl) GetExecuter() Executer {
 	return a.executer
+}
+
+func (a *actorImpl) GetState() ActorState {
+	return a.state
 }
 
 func (a *actorImpl) response(msg *DispatchMessage, err error, data interface{}) {
@@ -131,6 +149,35 @@ func (a *actorImpl) getProto(id int) Proto {
 	return nil
 }
 
+func (a *actorImpl) startWait(session int, asyncCB func(msg *DispatchMessage)) SessionCancel {
+	cancel := a.executer.StartWait(session, asyncCB)
+	a.actorMutex.Lock()
+	a.waitSessions[session] = struct{}{}
+	a.actorMutex.Unlock()
+
+	return func() {
+		a.actorMutex.Lock()
+		delete(a.waitSessions, session)
+		a.actorMutex.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+	}
+}
+
+func (a *actorImpl) wait(ctx context.Context, session int) (interface{}, error) {
+	if a.GetState() == ActorStateStop {
+		panic("actor stop")
+	}
+
+	r, err := a.executer.Wait(ctx, session)
+	if a.GetState() == ActorStateStop {
+		panic("actor stop")
+	}
+
+	return r, err
+}
+
 func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) error {
 	proto := a.getProto(protocol)
 	if proto == nil {
@@ -176,10 +223,8 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 	var rets interface{}
 	sendPack := a.buildSendPack(destination, proto, requestCtx, session, msg, options)
 	callHandler := func(msg *DispatchMessage, args ...interface{}) error {
-		cancelSession := a.executer.StartWait(session, nil)
-		if cancelSession != nil {
-			defer cancelSession()
-		}
+		cancelSession := a.startWait(session, nil)
+		defer cancelSession()
 
 		cancelTrans, err := system.transport(destination, msg)
 		if err != nil {
@@ -188,7 +233,7 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 		if cancelTrans != nil {
 			defer cancelTrans()
 		}
-		rets, err = a.executer.Wait(ctx, session)
+		rets, err = a.wait(ctx, session)
 		if err != nil {
 			return err
 		}
@@ -210,6 +255,10 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 }
 
 func (a *actorImpl) Dispatch(system *ActorSystem, msg *DispatchMessage) {
+	if a.GetState() == ActorStateStop {
+		return
+	}
+
 	msg.System = system
 	msg.Actor = a
 
@@ -234,19 +283,29 @@ func (a *actorImpl) onInit() {
 	if a.ops.initcb != nil {
 		a.ops.initcb()
 	}
+	a.state = ActorStateRunning
 }
 
 func (a *actorImpl) onKill() {
 	defer func() {
+		a.state = ActorStateStop
+		a.cancel()
 		a.cb = nil
 
 		a.actorMutex.Lock()
 		systems := make([]*ActorSystem, 0, len(a.addrs))
+		sessions := make([]int, 0, len(a.waitSessions))
 		for k := range a.addrs {
 			systems = append(systems, k)
 		}
+		for k := range a.waitSessions {
+			sessions = append(sessions, k)
+		}
 		a.actorMutex.Unlock()
 
+		for _, session := range sessions {
+			a.executer.OnResponse(session, nil, nil)
+		}
 		for _, system := range systems {
 			system.UnRegister(a)
 		}
@@ -286,42 +345,40 @@ func (a *actorImpl) Kill() {
 
 func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
 	session := a.executer.NewSession()
-	cancel := a.executer.StartWait(session, nil)
-	if cancel != nil {
-		defer cancel()
-	}
+	cancel := a.startWait(session, nil)
+	defer cancel()
 
 	a.dispatchSystemProto("exec", session, f)
-	r, err := a.executer.Wait(ctx, session)
+	r, err := a.wait(ctx, session)
 	return r, err
 }
 
-func (a *actorImpl) ExecAsync(f ExecCallbackAsync) {
-	a.dispatchSystemProto("exec_async", f)
+func (a *actorImpl) Fork(f ForkCallback) {
+	a.dispatchSystemProto("fork", f)
 }
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
 	session := a.executer.NewSession()
-	a.executer.StartWait(session, func(msg *DispatchMessage) {
+	cancel := a.startWait(session, func(msg *DispatchMessage) {
 		cb()
 	})
 
 	time.AfterFunc(d, func() {
 		a.executer.OnResponse(session, nil, nil)
+		cancel()
 	})
 }
 
 func (a *actorImpl) Sleep(d time.Duration) {
 	session := a.executer.NewSession()
-	cancel := a.executer.StartWait(session, nil)
-	if cancel != nil {
-		defer cancel()
-	}
+	cancel := a.startWait(session, nil)
+	defer cancel()
+
 	time.AfterFunc(d, func() {
 		a.executer.OnResponse(session, nil, nil)
 	})
 
-	_, _ = a.executer.Wait(context.Background(), session)
+	_, _ = a.wait(a.Context(), session)
 }
 
 func (a *actorImpl) GenSession() int {
@@ -329,26 +386,32 @@ func (a *actorImpl) GenSession() int {
 }
 
 func (a *actorImpl) Wait(ctx context.Context, session int) (interface{}, error) {
-	cancel := a.executer.StartWait(session, nil)
-	if cancel != nil {
-		defer cancel()
-	}
-	return a.executer.Wait(ctx, session)
+	cancel := a.startWait(session, nil)
+	defer cancel()
+	return a.wait(ctx, session)
 }
 
 func (a *actorImpl) Wakeup(session int, err error, data interface{}) {
 	a.executer.OnResponse(session, err, data)
 }
 
+func (a *actorImpl) Context() context.Context {
+	return a.context
+}
+
 type actorOptions struct {
 	logger Logger
 	protos []Proto
 	initcb func()
+	ctx    context.Context
 }
 
 func (ops *actorOptions) init() {
 	if ops.logger == nil {
 		ops.logger = DefaultLogger()
+	}
+	if ops.ctx == nil {
+		ops.ctx = context.Background()
 	}
 
 }
@@ -374,6 +437,12 @@ func ActorWithInitCB(cb func()) ActorOption {
 	}
 }
 
+func ActorWithContext(ctx context.Context) ActorOption {
+	return func(ops *actorOptions) {
+		ops.ctx = ctx
+	}
+}
+
 // NewActor 创建一个actor,立即返回,如果需要等待创建完成可以使用 ActorWithInitCB
 func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Actor {
 	ops := &actorOptions{}
@@ -383,10 +452,12 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 	ops.init()
 
 	a := &actorImpl{
-		ops:      ops,
-		instance: inst,
-		executer: executer,
-		addrs:    make(map[*ActorSystem]*ActorAddr),
+		ops:          ops,
+		instance:     inst,
+		executer:     executer,
+		state:        ActorStateInit,
+		addrs:        make(map[*ActorSystem]*ActorAddr),
+		waitSessions: make(map[int]struct{}),
 	}
 
 	a.cb = func(msg *DispatchMessage) {
@@ -400,6 +471,8 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 
 		p.OnMessage(msg)
 	}
+
+	a.context, a.cancel = context.WithCancel(ops.ctx)
 
 	a.protoSystem = NewProtoSystem(ops.logger)
 	a.ops.protos = append(a.ops.protos, a.protoSystem)

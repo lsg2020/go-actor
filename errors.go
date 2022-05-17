@@ -16,7 +16,7 @@ const (
 	ErrCodeNeedDestination   = 6
 	ErrCodeActorMiss         = 7
 	ErrCodeTransportMiss     = 8
-	ErrCodeResponseMiss      = 8
+	ErrCodeResponseMiss      = 9
 )
 
 var ErrorCodes = []string{
