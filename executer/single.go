@@ -65,7 +65,11 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 						executer.workId = workId
 					}
 				} else {
-					msg.System.Logger().Warnf("dispatch response miss %d\n", session)
+					logger := go_actor.DefaultLogger()
+					if msg.Actor != nil {
+						logger = msg.Actor.Logger()
+					}
+					logger.Warnf("dispatch response miss %d\n", session)
 				}
 				continue
 			}
@@ -74,7 +78,11 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 			if cb != nil {
 				cb(msg)
 			} else {
-				msg.System.Logger().Errorf("actor message callback not set\n")
+				logger := go_actor.DefaultLogger()
+				if msg.Actor != nil {
+					logger = msg.Actor.Logger()
+				}
+				logger.Errorf("actor message callback not set\n")
 			}
 		case <-executer.context.Done():
 			finish = true

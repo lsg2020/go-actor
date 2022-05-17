@@ -79,12 +79,6 @@ func (p *ProtoSystem) init() {
 }
 
 func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) error {
-	defer func() {
-		if r := recover(); r != nil {
-			msg.Actor.Logger().Errorf("actor start error %#v", r)
-			msg.Actor.Kill()
-		}
-	}()
 	a := msg.Actor.(*actorImpl)
 	a.onInit()
 	return nil

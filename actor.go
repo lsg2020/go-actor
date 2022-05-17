@@ -278,6 +278,13 @@ func (a *actorImpl) onUnregister(system *ActorSystem) {
 }
 
 func (a *actorImpl) onInit() {
+	defer func() {
+		if r := recover(); r != nil {
+			a.Logger().Errorf("actor start error %#v", r)
+			a.Kill()
+		}
+	}()
+
 	a.Instance().OnInit(a)
 
 	if a.ops.initcb != nil {
