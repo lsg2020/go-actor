@@ -1,4 +1,4 @@
-package go_actor
+package goactor
 
 import (
 	message "github.com/lsg2020/go-actor/pb"

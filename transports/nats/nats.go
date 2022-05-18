@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
 	"github.com/nats-io/nats.go"
 	"google.golang.org/protobuf/proto"
@@ -18,7 +18,7 @@ func NewNats(servers string) *NatsTransport {
 }
 
 type NatsTransport struct {
-	system  *go_actor.ActorSystem
+	system  *goactor.ActorSystem
 	servers string
 	topic   string
 
@@ -28,7 +28,7 @@ type NatsTransport struct {
 	nodes     map[uint64]string
 
 	responseMutex sync.Mutex
-	responses     map[int32]*go_actor.DispatchMessage
+	responses     map[int32]*goactor.DispatchMessage
 	session       int32
 }
 
@@ -40,9 +40,9 @@ func (trans *NatsTransport) URI() string {
 	return trans.topic
 }
 
-func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
+func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 	trans.nodes = make(map[uint64]string)
-	trans.responses = make(map[int32]*go_actor.DispatchMessage)
+	trans.responses = make(map[int32]*goactor.DispatchMessage)
 	trans.session = 1
 	trans.system = system
 	nc, err := nats.Connect(trans.servers)
@@ -52,22 +52,22 @@ func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 
 	node := fmt.Sprintf("%d", system.InstanceID())
 
-	response := func(msg *go_actor.DispatchMessage, err error, data interface{}) {
-		responseMsg := &go_actor.DispatchMessage{
+	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
+		responseMsg := &goactor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,
 		}
 		responseMsg.Headers.Put(
-			go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
-			go_actor.BuildHeaderInt(go_actor.HeaderIdSession, msg.Headers.GetInt(go_actor.HeaderIdSession)),
-			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, msg.Headers.GetInt(go_actor.HeaderIdTransSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
+			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.Headers.GetInt(goactor.HeaderIdSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
 		)
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
 			system.Logger().Errorf("response pack error %s\n", perr.Error())
 			return
 		}
-		perr = nc.Publish(msg.Headers.GetStr(go_actor.HeaderIdTransAddress), buf)
+		perr = nc.Publish(msg.Headers.GetStr(goactor.HeaderIdTransAddress), buf)
 		if err != nil {
 			system.Logger().Errorf("response pack error %s\n", perr.Error())
 		}
@@ -85,15 +85,15 @@ func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 			return
 		}
 
-		dispatch := &go_actor.DispatchMessage{
+		dispatch := &goactor.DispatchMessage{
 			DispatchResponse: response,
 		}
 		dispatch.FromPB(msg)
 
-		if dispatch.Headers.GetInt(go_actor.HeaderIdProtocol) == go_actor.ProtocolResponse {
-			var requestMsg *go_actor.DispatchMessage
+		if dispatch.Headers.GetInt(goactor.HeaderIdProtocol) == goactor.ProtocolResponse {
+			var requestMsg *goactor.DispatchMessage
 			trans.responseMutex.Lock()
-			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))]
+			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(goactor.HeaderIdTransSession))]
 			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
@@ -109,10 +109,10 @@ func (trans *NatsTransport) Init(system *go_actor.ActorSystem) error {
 	return err
 }
 
-func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, error) {
-	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
+func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
+	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
 	if destination == nil {
-		return nil, go_actor.ErrNeedDestination
+		return nil, goactor.ErrNeedDestination
 	}
 
 	trans.nodeMutex.Lock()
@@ -121,28 +121,28 @@ func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.Sessio
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
-			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 		var ok bool
 		nodeAddr, ok = cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 
 		trans.nodes[destination.NodeInstanceId] = nodeAddr
 	}
 	trans.nodeMutex.Unlock()
 
-	reqsession := msg.Headers.GetInt(go_actor.HeaderIdSession)
+	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
 	transSession := int32(0)
 	if reqsession >= 0 {
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
 		msg.Headers.Put(
-			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, int(transSession)),
-			go_actor.BuildHeaderString(go_actor.HeaderIdTransAddress, trans.topic),
+			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, int(transSession)),
+			goactor.BuildHeaderString(goactor.HeaderIdTransAddress, trans.topic),
 		)
 
 		trans.responses[transSession] = msg
@@ -151,12 +151,12 @@ func (trans *NatsTransport) Send(msg *go_actor.DispatchMessage) (go_actor.Sessio
 
 	buf, pberr := proto.Marshal(msg.ToPB())
 	if pberr != nil {
-		return nil, go_actor.ErrorWrap(pberr)
+		return nil, goactor.ErrorWrap(pberr)
 	}
 
 	err := trans.nc.Publish(nodeAddr, buf)
 	if err != nil {
-		return nil, go_actor.ErrorWrap(err)
+		return nil, goactor.ErrorWrap(err)
 	}
 	if reqsession >= 0 {
 		return func() {

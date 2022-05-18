@@ -1,4 +1,4 @@
-package go_actor
+package goactor
 
 // Transport 处理节点间的请求/回复消息传输
 type Transport interface {

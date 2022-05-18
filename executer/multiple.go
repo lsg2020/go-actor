@@ -5,12 +5,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 )
 
 type MultipleGoroutineResponseInfo struct {
-	ch      chan *go_actor.DispatchMessage
-	asyncCB func(msg *go_actor.DispatchMessage)
+	ch      chan *goactor.DispatchMessage
+	asyncCB func(msg *goactor.DispatchMessage)
 }
 
 // MultipleGoroutine 是一个多协执行器
@@ -23,10 +23,10 @@ type MultipleGoroutine struct {
 	waitResponse map[int]MultipleGoroutineResponseInfo
 }
 
-func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *go_actor.DispatchMessage)) go_actor.SessionCancel {
+func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *goactor.DispatchMessage)) goactor.SessionCancel {
 	waitInfo := MultipleGoroutineResponseInfo{asyncCB: asyncCB}
 	if asyncCB == nil {
-		waitInfo.ch = make(chan *go_actor.DispatchMessage, 1)
+		waitInfo.ch = make(chan *goactor.DispatchMessage, 1)
 	}
 	executer.waitMutex.Lock()
 	executer.waitResponse[session] = waitInfo
@@ -44,14 +44,14 @@ func (executer *MultipleGoroutine) Wait(ctx context.Context, session int) (inter
 	executer.waitMutex.Unlock()
 
 	if !ok || waitInfo.ch == nil {
-		return nil, go_actor.ErrResponseMiss
+		return nil, goactor.ErrResponseMiss
 	}
 
 	select {
 	case msg := <-waitInfo.ch:
 		return msg.Content, msg.ResponseErr
 	case <-ctx.Done():
-		return nil, go_actor.ErrCallTimeOut
+		return nil, goactor.ErrCallTimeOut
 	}
 }
 
@@ -63,7 +63,7 @@ func (executer *MultipleGoroutine) Start(ctx context.Context) {
 
 }
 
-func (executer *MultipleGoroutine) OnMessage(msg *go_actor.DispatchMessage) {
+func (executer *MultipleGoroutine) OnMessage(msg *goactor.DispatchMessage) {
 	cb := msg.Actor.Callback()
 	if cb != nil {
 		go cb(msg)
@@ -78,13 +78,13 @@ func (executer *MultipleGoroutine) OnResponse(session int, err error, data inter
 		return
 	}
 
-	msg := &go_actor.DispatchMessage{
+	msg := &goactor.DispatchMessage{
 		ResponseErr: err,
 		Content:     data,
 	}
 	msg.Headers.Put(
-		go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
-		go_actor.BuildHeaderInt(go_actor.HeaderIdSession, session),
+		goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
+		goactor.BuildHeaderInt(goactor.HeaderIdSession, session),
 	)
 	if waitInfo.asyncCB != nil {
 		go waitInfo.asyncCB(msg)

@@ -8,16 +8,16 @@
 
 ## 快速开始
 * `创建ActorSystem` ActorSystem用来分类管理Actor,调用某个Actor的时候需要基于他所在的同名ActorSystem
-    * `go_actor.WithName`: 指定ActorSystem名字,同类同名
-    * `go_actor.WithInstanceId`: 指定节点id,同类型下唯一
-    * `go_actor.WithEtcd`: etcd注册地址,同类型使用同组etcd
-    * `go_actor.WithTransport`: 关联传输器
+    * `goactor.WithName`: 指定ActorSystem名字,同类同名
+    * `goactor.WithInstanceId`: 指定节点id,同类型下唯一
+    * `goactor.WithEtcd`: etcd注册地址,同类型使用同组etcd
+    * `goactor.WithTransport`: 关联传输器
 ```go
-	system, err := go_actor.NewActorSystem(
-		go_actor.WithName("hello"),
-		go_actor.WithInstanceId(1),
-		go_actor.WithEtcd("http://127.0.0.1:2379"),
-		go_actor.WithTransport(trans),
+	system, err := goactor.NewActorSystem(
+		goactor.WithName("hello"),
+		goactor.WithInstanceId(1),
+		goactor.WithEtcd("http://127.0.0.1:2379"),
+		goactor.WithTransport(trans),
 	)
 ```
 
@@ -41,11 +41,11 @@
 
 * `创建Actor`并指定个名字注册到ActorSystem
 ```go
-	func (hello *HelloActor) OnInit(a go_actor.Actor) {
+	func (hello *HelloActor) OnInit(a goactor.Actor) {
 		hello.actor = a
 		hello.addr = system.Register(a, "hello")
 	}
 
-	go_actor.NewActor(&HelloActor{}, single, go_actor.ActorWithProto(proto))
+	goactor.NewActor(&HelloActor{}, single, goactor.ActorWithProto(proto))
 ```
 

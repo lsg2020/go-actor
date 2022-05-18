@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
 	"github.com/lsg2020/go-actor/protocols"
@@ -16,49 +16,49 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
-var system *go_actor.ActorSystem
+var system *goactor.ActorSystem
 var client *hello.HelloServiceClient
-var selector go_actor.Selector
+var selector goactor.Selector
 
 type HelloActor struct {
-	actor go_actor.Actor
-	addr  *go_actor.ActorAddr
+	actor goactor.Actor
+	addr  *goactor.ActorAddr
 }
 
-func (hello *HelloActor) OnInit(a go_actor.Actor) {
+func (hello *HelloActor) OnInit(a goactor.Actor) {
 	hello.actor = a
 	hello.addr = system.Register(a, "hello")
 	log.Println("actor init", *hello.addr)
 }
 
-func (hello *HelloActor) OnRelease(a go_actor.Actor) {
+func (hello *HelloActor) OnRelease(a goactor.Actor) {
 
 }
 
 type HelloService struct {
 }
 
-func (s *HelloService) OnSend(ctx *go_actor.DispatchMessage, req *hello.Request) error {
+func (s *HelloService) OnSend(ctx *goactor.DispatchMessage, req *hello.Request) error {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnSend in actor:%#v req:%#v\n", a.addr, req.String())
 	return nil
 }
 
-func (s *HelloService) OnAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
+func (s *HelloService) OnAdd(ctx *goactor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnAdd in actor:%#v req:%#v\n", a.addr, req.String())
 	return &hello.Response{R: req.A + req.B}, nil
 }
 
-func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
+func (s *HelloService) OnTestCallAdd(ctx *goactor.DispatchMessage, req *hello.Request) (*hello.Response, error) {
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 
-	rsp1, err1 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(go_actor.HeaderIdTracingSpan))
+	rsp1, err1 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err1 != nil {
 		return nil, err1
 	}
-	rsp2, err2 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(go_actor.HeaderIdTracingSpan))
+	rsp2, err2 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err2 != nil {
 		return nil, err2
 	}
@@ -68,7 +68,7 @@ func (s *HelloService) OnTestCallAdd(ctx *go_actor.DispatchMessage, req *hello.R
 type ClientActor struct {
 }
 
-func (c *ClientActor) OnInit(a go_actor.Actor) {
+func (c *ClientActor) OnInit(a goactor.Actor) {
 	for i := int32(0); true; i++ {
 		client.Send(system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		rsp, err := client.TestCallAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
@@ -77,7 +77,7 @@ func (c *ClientActor) OnInit(a go_actor.Actor) {
 	}
 }
 
-func (c *ClientActor) OnRelease(a go_actor.Actor) {
+func (c *ClientActor) OnRelease(a goactor.Actor) {
 }
 
 // NewTracer 创建一个jaeger Tracer
@@ -112,11 +112,11 @@ func NewTracer(serviceName, addr string) (opentracing.Tracer, io.Closer, error) 
 func main() {
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
 	var err error
-	system, err = go_actor.NewActorSystem(
-		go_actor.WithName("tracing"),
-		go_actor.WithInstanceId(1),
-		go_actor.WithEtcd("http://10.21.248.213:2379"),
-		go_actor.WithContext(ctx),
+	system, err = goactor.NewActorSystem(
+		goactor.WithName("tracing"),
+		goactor.WithInstanceId(1),
+		goactor.WithEtcd("http://10.21.248.213:2379"),
+		goactor.WithContext(ctx),
 	)
 	if err != nil {
 		panic(err)
@@ -131,9 +131,9 @@ func main() {
 	}
 	opentracing.SetGlobalTracer(tracer)
 
-	proto := protocols.NewProtobuf(1, go_actor.ProtoWithInterceptorCall(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) error {
-		method := msg.Headers.GetStr(go_actor.HeaderIdMethod)
-		span := msg.Headers.GetInterface(go_actor.HeaderIdTracingSpan)
+	proto := protocols.NewProtobuf(1, goactor.ProtoWithInterceptorCall(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
+		method := msg.Headers.GetStr(goactor.HeaderIdMethod)
+		span := msg.Headers.GetInterface(goactor.HeaderIdTracingSpan)
 		var spanContext opentracing.Span
 		if span == nil {
 			spanContext = tracer.StartSpan(method)
@@ -144,34 +144,34 @@ func main() {
 
 		carrier := new(bytes.Buffer)
 		tracer.Inject(spanContext.Context(), opentracing.Binary, carrier)
-		msg.Headers.Put(go_actor.BuildHeaderBytes(go_actor.HeaderIdTracingSpanCarrier, carrier.Bytes()))
+		msg.Headers.Put(goactor.BuildHeaderBytes(goactor.HeaderIdTracingSpanCarrier, carrier.Bytes()))
 
 		return handler(msg, args...)
-	}), go_actor.ProtoWithInterceptorDispatch(func(msg *go_actor.DispatchMessage, handler go_actor.ProtoHandler, args ...interface{}) error {
-		spanCarrier := msg.Headers.GetBytes(go_actor.HeaderIdTracingSpanCarrier)
+	}), goactor.ProtoWithInterceptorDispatch(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
+		spanCarrier := msg.Headers.GetBytes(goactor.HeaderIdTracingSpanCarrier)
 		spanContext, err := tracer.Extract(opentracing.Binary, bytes.NewBuffer(spanCarrier))
 		if err != nil {
-			return go_actor.ErrorWrap(err)
+			return goactor.ErrorWrap(err)
 		}
 		span := tracer.StartSpan("operation", opentracing.ChildOf(spanContext))
 		defer span.Finish()
-		msg.Headers.Put(go_actor.BuildHeaderInterfaceRaw(go_actor.HeaderIdTracingSpan, span, true))
+		msg.Headers.Put(goactor.BuildHeaderInterfaceRaw(goactor.HeaderIdTracingSpan, span, true))
 
 		return handler(msg, args...)
 	}))
 	hello.RegisterHelloService(&HelloService{}, proto)
 	client = hello.NewHelloServiceClient(proto)
 
-	selector, err = go_actor.NewRandomSelector(system, "hello")
+	selector, err = goactor.NewRandomSelector(system, "hello")
 	if err != nil {
 		panic(err)
 	}
 
 	for i := 0; i < 10; i++ {
-		go_actor.NewActor(&HelloActor{}, single, go_actor.ActorWithProto(proto))
+		goactor.NewActor(&HelloActor{}, single, goactor.ActorWithProto(proto))
 	}
 
-	go_actor.NewActor(&ClientActor{}, single, go_actor.ActorWithProto(proto))
+	goactor.NewActor(&ClientActor{}, single, goactor.ActorWithProto(proto))
 
 	select {
 	case <-system.Context().Done():

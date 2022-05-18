@@ -5,21 +5,21 @@ import (
 	"log"
 	"time"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
 	"github.com/lsg2020/go-actor/protocols"
 	"github.com/lsg2020/go-actor/transports/tcp"
 )
 
-var system *go_actor.ActorSystem
-var selector go_actor.Selector
+var system *goactor.ActorSystem
+var selector goactor.Selector
 var client *hello.HelloServiceClient
 
 type NodeActor struct {
 }
 
-func (p *NodeActor) OnInit(a go_actor.Actor) {
+func (p *NodeActor) OnInit(a goactor.Actor) {
 	for i := int32(0); i < 40; i++ {
 		client.Send(system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
 		rsp, err := client.TestCallAdd(system.Context(), system, a, selector.Addr(), &hello.Request{A: i, B: 10}, nil)
@@ -28,19 +28,19 @@ func (p *NodeActor) OnInit(a go_actor.Actor) {
 	}
 }
 
-func (p *NodeActor) OnRelease(a go_actor.Actor) {
+func (p *NodeActor) OnRelease(a goactor.Actor) {
 }
 
 func main() {
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
 	var err error
 	trans := tcp.NewTcp("0.0.0.0:8082", "127.0.0.1:8082")
-	system, err = go_actor.NewActorSystem(
-		go_actor.WithName("hello"),
-		go_actor.WithInstanceId(2),
-		go_actor.WithEtcd("http://10.21.248.213:2379"),
-		go_actor.WithContext(ctx),
-		go_actor.WithTransport(trans),
+	system, err = goactor.NewActorSystem(
+		goactor.WithName("hello"),
+		goactor.WithInstanceId(2),
+		goactor.WithEtcd("http://10.21.248.213:2379"),
+		goactor.WithContext(ctx),
+		goactor.WithTransport(trans),
 	)
 	if err != nil {
 		panic(err)
@@ -53,13 +53,13 @@ func main() {
 	hello.RegisterHelloService(nil, proto)
 	client = hello.NewHelloServiceClient(proto)
 
-	selector, err = go_actor.NewRandomSelector(system, "hello")
+	selector, err = goactor.NewRandomSelector(system, "hello")
 	if err != nil {
 		panic(err)
 	}
 
 	for i := 0; i < 10; i++ {
-		go_actor.NewActor(&NodeActor{}, single, go_actor.ActorWithProto(proto))
+		goactor.NewActor(&NodeActor{}, single, goactor.ActorWithProto(proto))
 	}
 
 	select {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -19,7 +19,7 @@ func NewTcp(listenAddr string, publicAddr string) *TcpTransport {
 		listenAddr: listenAddr,
 		publicAddr: publicAddr,
 		connects:   make(map[uint64]*tcpConnect),
-		responses:  make(map[int32]*go_actor.DispatchMessage),
+		responses:  make(map[int32]*goactor.DispatchMessage),
 	}
 	return trans
 }
@@ -41,13 +41,13 @@ func (node *tcpConnect) send(buf []byte) {
 type TcpTransport struct {
 	listenAddr string
 	publicAddr string
-	system     *go_actor.ActorSystem
+	system     *goactor.ActorSystem
 
 	nodeMutex sync.Mutex
 	connects  map[uint64]*tcpConnect
 
 	responseMutex sync.Mutex
-	responses     map[int32]*go_actor.DispatchMessage
+	responses     map[int32]*goactor.DispatchMessage
 	session       int32
 }
 
@@ -69,7 +69,7 @@ func (trans *TcpTransport) newTcpConnect(conn net.Conn, onclose func()) *tcpConn
 	return node
 }
 
-func (trans *TcpTransport) Init(system *go_actor.ActorSystem) error {
+func (trans *TcpTransport) Init(system *goactor.ActorSystem) error {
 	trans.system = system
 
 	listener, err := net.Listen("tcp", trans.listenAddr)
@@ -92,11 +92,11 @@ func (trans *TcpTransport) Init(system *go_actor.ActorSystem) error {
 	return nil
 }
 
-func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.SessionCancel, error) {
-	reqsession := msg.Headers.GetInt(go_actor.HeaderIdSession)
-	destination := msg.Headers.GetAddr(go_actor.HeaderIdDestination)
+func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
+	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
+	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
 	if destination == nil {
-		return nil, go_actor.ErrNeedDestination
+		return nil, goactor.ErrNeedDestination
 	}
 
 	trans.nodeMutex.Lock()
@@ -105,18 +105,18 @@ func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.Session
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
-			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 		nodeAddr, ok := cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, go_actor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
 		}
 
 		conn, err := net.Dial("tcp", nodeAddr)
 		if err != nil {
 			trans.nodeMutex.Unlock()
-			return nil, go_actor.ErrorWrap(err)
+			return nil, goactor.ErrorWrap(err)
 		}
 
 		tcpConn = trans.newTcpConnect(conn, func() {
@@ -136,7 +136,7 @@ func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.Session
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
-		msg.Headers.Put(go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, int(transSession)))
+		msg.Headers.Put(goactor.BuildHeaderInt(goactor.HeaderIdTransSession, int(transSession)))
 
 		trans.responses[transSession] = msg
 		trans.responseMutex.Unlock()
@@ -144,7 +144,7 @@ func (trans *TcpTransport) Send(msg *go_actor.DispatchMessage) (go_actor.Session
 
 	buf, pberr := proto.Marshal(msg.ToPB())
 	if pberr != nil {
-		return nil, go_actor.ErrorWrap(pberr)
+		return nil, goactor.ErrorWrap(pberr)
 	}
 	tcpConn.send(buf)
 
@@ -167,15 +167,15 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 		}
 	}()
 
-	response := func(msg *go_actor.DispatchMessage, err error, data interface{}) {
-		responseMsg := &go_actor.DispatchMessage{
+	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
+		responseMsg := &goactor.DispatchMessage{
 			ResponseErr: err,
 			Content:     data,
 		}
 		responseMsg.Headers.Put(
-			go_actor.BuildHeaderInt(go_actor.HeaderIdProtocol, go_actor.ProtocolResponse),
-			go_actor.BuildHeaderInt(go_actor.HeaderIdSession, msg.Headers.GetInt(go_actor.HeaderIdSession)),
-			go_actor.BuildHeaderInt(go_actor.HeaderIdTransSession, msg.Headers.GetInt(go_actor.HeaderIdTransSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
+			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.Headers.GetInt(goactor.HeaderIdSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
 		)
 		buf, pberr := proto.Marshal(responseMsg.ToPB())
 		if pberr != nil {
@@ -192,20 +192,20 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 			return
 		}
 
-		dispatch := &go_actor.DispatchMessage{
+		dispatch := &goactor.DispatchMessage{
 			DispatchResponse: response,
 		}
 		dispatch.FromPB(msg)
 
-		if dispatch.Headers.GetInt(go_actor.HeaderIdProtocol) == go_actor.ProtocolResponse {
-			var requestMsg *go_actor.DispatchMessage
+		if dispatch.Headers.GetInt(goactor.HeaderIdProtocol) == goactor.ProtocolResponse {
+			var requestMsg *goactor.DispatchMessage
 			trans.responseMutex.Lock()
-			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))]
+			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(goactor.HeaderIdTransSession))]
 			trans.responseMutex.Unlock()
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			} else {
-				trans.system.Logger().Warnf("dispatch response message not exists session: %d\n", dispatch.Headers.GetInt(go_actor.HeaderIdTransSession))
+				trans.system.Logger().Warnf("dispatch response message not exists session: %d\n", dispatch.Headers.GetInt(goactor.HeaderIdTransSession))
 			}
 		} else {
 			err := trans.system.Dispatch(dispatch)

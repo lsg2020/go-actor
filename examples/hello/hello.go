@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	go_actor "github.com/lsg2020/go-actor"
+	goactor "github.com/lsg2020/go-actor"
 	"github.com/lsg2020/go-actor/executer"
 )
 
@@ -13,7 +13,7 @@ type Actor struct {
 	Amount int
 }
 
-func (a *Actor) OnInit(actor go_actor.Actor) {
+func (a *Actor) OnInit(actor goactor.Actor) {
 	actor.Fork(func() {
 		for {
 			a.Amount++
@@ -31,7 +31,7 @@ func (a *Actor) OnInit(actor go_actor.Actor) {
 	actor.Logger().Infof("actor init %#v", a)
 }
 
-func (a *Actor) OnRelease(actor go_actor.Actor) {
+func (a *Actor) OnRelease(actor goactor.Actor) {
 	actor.Logger().Infof("actor release %#v", a)
 }
 
@@ -40,7 +40,7 @@ func main() {
 	single.Start(context.Background(), 1)
 
 	for i := 0; i < 10; i++ {
-		go_actor.NewActor(&Actor{
+		goactor.NewActor(&Actor{
 			Id: i,
 		}, single)
 	}

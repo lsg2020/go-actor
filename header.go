@@ -1,4 +1,4 @@
-package go_actor
+package goactor
 
 type HeaderValType int
 

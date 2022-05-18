@@ -1,20 +1,20 @@
 package protocols
 
-import go_actor "github.com/lsg2020/go-actor"
+import goactor "github.com/lsg2020/go-actor"
 
-func NewRaw(id int, opts ...go_actor.ProtoOption) *Raw {
+func NewRaw(id int, opts ...goactor.ProtoOption) *Raw {
 	return &Raw{
-		ProtoBaseImpl: go_actor.ProtoBaseBuild(opts...),
+		ProtoBaseImpl: goactor.ProtoBaseBuild(opts...),
 		protoId:       id,
-		cmds:          make(map[string]go_actor.ProtoHandler),
+		cmds:          make(map[string]goactor.ProtoHandler),
 	}
 }
 
 type Raw struct {
-	go_actor.ProtoBaseImpl
+	goactor.ProtoBaseImpl
 	protoId int
 
-	cmds map[string]go_actor.ProtoHandler
+	cmds map[string]goactor.ProtoHandler
 }
 
 func (raw *Raw) Id() int {
@@ -25,11 +25,11 @@ func (raw *Raw) Name() string {
 	return "raw"
 }
 
-func (raw *Raw) Register(cmd string, cb go_actor.ProtoHandler, extend ...interface{}) {
+func (raw *Raw) Register(cmd string, cb goactor.ProtoHandler, extend ...interface{}) {
 	raw.cmds[cmd] = cb
 }
 
-func (raw *Raw) OnMessage(msg *go_actor.DispatchMessage) {
+func (raw *Raw) OnMessage(msg *goactor.DispatchMessage) {
 	datas, _, _ := raw.UnPack(nil, msg.Content)
 	msg.Content = datas[1:]
 

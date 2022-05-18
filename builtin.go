@@ -1,4 +1,4 @@
-package go_actor
+package goactor
 
 // NewProtoSystem 创建一个内部协议,处理init/kill/exec
 func NewProtoSystem(logger Logger) *ProtoSystem {
