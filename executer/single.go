@@ -2,8 +2,10 @@ package executer
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	goactor "github.com/lsg2020/go-actor"
 )
@@ -13,7 +15,7 @@ type SingleGoroutineResponseInfo struct {
 	asyncCB func(msg *goactor.DispatchMessage)
 }
 
-// SingleGoroutine 是一个单协执行器
+// SingleGoroutine 是一个单协程执行器
 // 注册在该执行器上的actor消息同时只会有一个协程运行
 // 并支持协程的同步等待
 type SingleGoroutine struct {
@@ -28,6 +30,11 @@ type SingleGoroutine struct {
 
 	responseWait map[int]SingleGoroutineResponseInfo
 	responseMsg  *goactor.DispatchMessage
+
+	waitMutex         sync.Mutex
+	waitChangeContext context.Context
+	waitChangeCancel  context.CancelFunc
+	waitContextMap    map[int]context.Context
 }
 
 func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
@@ -112,8 +119,24 @@ func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interfa
 		executer.cond.L.Lock()
 	}
 
+	executer.waitMutex.Lock()
+	executer.waitContextMap[session] = ctx
+	if executer.waitChangeCancel != nil {
+		executer.waitChangeCancel()
+		executer.waitChangeCancel = nil
+	}
+	executer.waitMutex.Unlock()
+
 	executer.cond.Signal()
 	responseWaitInfo.cond.Wait()
+
+	executer.waitMutex.Lock()
+	delete(executer.waitContextMap, session)
+	if executer.waitChangeCancel != nil {
+		executer.waitChangeCancel()
+		executer.waitChangeCancel = nil
+	}
+	executer.waitMutex.Unlock()
 
 	executer.workId = currentWorkId
 	executer.waitAmount--
@@ -126,7 +149,7 @@ func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interfa
 	return executer.responseMsg.Content, nil
 }
 
-func (executer *SingleGoroutine) Start(ctx context.Context, initWork int) {
+func (executer *SingleGoroutine) Start(ctx context.Context, initWorkAmount int) {
 	executer.cond = sync.NewCond(new(sync.Mutex))
 	executer.nextSession = 0
 
@@ -134,7 +157,52 @@ func (executer *SingleGoroutine) Start(ctx context.Context, initWork int) {
 	executer.ch = make(chan *goactor.DispatchMessage, 256)
 	executer.responseWait = make(map[int]SingleGoroutineResponseInfo)
 
-	executer.workAmount = initWork
+	executer.workAmount = initWorkAmount
+
+	executer.waitChangeContext, executer.waitChangeCancel = context.WithCancel(ctx)
+	executer.waitContextMap = make(map[int]context.Context)
+	go func() {
+		cases := make([]reflect.SelectCase, 0, 128)
+		sessions := make([]int, 0, 128)
+		for {
+			cases = cases[:0]
+			sessions = sessions[:0]
+
+			executer.waitMutex.Lock()
+			executer.waitChangeContext, executer.waitChangeCancel = context.WithCancel(ctx)
+			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())})
+			sessions = append(sessions, 0)
+			cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(executer.waitChangeContext.Done())})
+			sessions = append(sessions, 0)
+
+			for session, ctx := range executer.waitContextMap {
+				cases = append(cases, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())})
+				sessions = append(sessions, session)
+			}
+			executer.waitMutex.Unlock()
+
+			chosen, _, _ := reflect.Select(cases)
+
+			if chosen == 0 {
+				break
+			}
+			if chosen == 1 {
+				time.Sleep(time.Millisecond * 100)
+				continue
+			}
+
+			session := sessions[chosen]
+			executer.waitMutex.Lock()
+			_, exists := executer.waitContextMap[session]
+			if exists {
+				delete(executer.waitContextMap, session)
+			}
+			executer.waitMutex.Unlock()
+			if exists {
+				executer.OnResponse(session, goactor.ErrCallTimeOut, nil)
+			}
+		}
+	}()
 
 	initWg := &sync.WaitGroup{}
 	for i := 0; i < executer.workAmount; i++ {
@@ -172,7 +240,7 @@ func (executer *SingleGoroutine) NewSession() int {
 	return int(session)
 }
 
-func (executer *SingleGoroutine) StartWait(session int, asyncCB func(msg *goactor.DispatchMessage)) goactor.SessionCancel {
+func (executer *SingleGoroutine) PreWait(session int, asyncCB func(msg *goactor.DispatchMessage)) goactor.SessionCancel {
 	cancel := func() {
 		delete(executer.responseWait, session)
 	}

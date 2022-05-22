@@ -149,8 +149,8 @@ func (a *actorImpl) getProto(id int) Proto {
 	return nil
 }
 
-func (a *actorImpl) startWait(session int, asyncCB func(msg *DispatchMessage)) SessionCancel {
-	cancel := a.executer.StartWait(session, asyncCB)
+func (a *actorImpl) preWait(session int, asyncCB func(msg *DispatchMessage)) SessionCancel {
+	cancel := a.executer.PreWait(session, asyncCB)
 	a.actorMutex.Lock()
 	a.waitSessions[session] = struct{}{}
 	a.actorMutex.Unlock()
@@ -223,7 +223,7 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 	var rets interface{}
 	sendPack := a.buildSendPack(destination, proto, requestCtx, session, msg, options)
 	callHandler := func(msg *DispatchMessage, args ...interface{}) error {
-		cancelSession := a.startWait(session, nil)
+		cancelSession := a.preWait(session, nil)
 		defer cancelSession()
 
 		cancelTrans, err := system.transport(destination, msg)
@@ -352,7 +352,7 @@ func (a *actorImpl) Kill() {
 
 func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
 	session := a.executer.NewSession()
-	cancel := a.startWait(session, nil)
+	cancel := a.preWait(session, nil)
 	defer cancel()
 
 	a.dispatchSystemProto("exec", session, f)
@@ -367,7 +367,7 @@ func (a *actorImpl) Fork(f ForkCallback) {
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
 	session := a.executer.NewSession()
 	var cancel SessionCancel
-	cancel = a.startWait(session, func(msg *DispatchMessage) {
+	cancel = a.preWait(session, func(msg *DispatchMessage) {
 		cancel()
 		cb()
 	})
@@ -379,7 +379,7 @@ func (a *actorImpl) Timeout(d time.Duration, cb func()) {
 
 func (a *actorImpl) Sleep(d time.Duration) {
 	session := a.executer.NewSession()
-	cancel := a.startWait(session, nil)
+	cancel := a.preWait(session, nil)
 	defer cancel()
 
 	time.AfterFunc(d, func() {
@@ -394,7 +394,7 @@ func (a *actorImpl) GenSession() int {
 }
 
 func (a *actorImpl) Wait(ctx context.Context, session int) (interface{}, error) {
-	cancel := a.startWait(session, nil)
+	cancel := a.preWait(session, nil)
 	defer cancel()
 	return a.wait(ctx, session)
 }

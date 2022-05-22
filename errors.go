@@ -48,7 +48,7 @@ type ActorError struct {
 	Frames ErrFrames
 }
 
-// Frame is a single step in stack trace.
+// ErrFrame is a single step in stack trace.
 type ErrFrame struct {
 	// Func contains a function name.
 	Func string

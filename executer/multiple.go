@@ -23,7 +23,7 @@ type MultipleGoroutine struct {
 	waitResponse map[int]MultipleGoroutineResponseInfo
 }
 
-func (executer *MultipleGoroutine) StartWait(session int, asyncCB func(msg *goactor.DispatchMessage)) goactor.SessionCancel {
+func (executer *MultipleGoroutine) PreWait(session int, asyncCB func(msg *goactor.DispatchMessage)) goactor.SessionCancel {
 	waitInfo := MultipleGoroutineResponseInfo{asyncCB: asyncCB}
 	if asyncCB == nil {
 		waitInfo.ch = make(chan *goactor.DispatchMessage, 1)
