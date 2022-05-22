@@ -25,6 +25,10 @@ type DispatchMessage struct {
 
 // Response 回复通知消息的接口
 func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
+	if err != nil && msg.RequestProto != nil {
+		msg.RequestProto.InterceptorError()(msg, nil, err)
+	}
+
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
 		return
@@ -207,11 +211,14 @@ type Proto interface {
 	InterceptorCall() ProtoInterceptor
 	// InterceptorDispatch 消息处理的拦截器,方便记录指标/设置调用链/过滤消息/设置上下文等
 	InterceptorDispatch() ProtoInterceptor
+	// InterceptorError 消息错误的拦截器,方便统计error
+	InterceptorError() ProtoInterceptor
 }
 
 type ProtoBaseImpl struct {
 	callInterceptor     ProtoInterceptor
 	dispatchInterceptor ProtoInterceptor
+	errorInterceptor    ProtoInterceptor
 }
 
 func (p *ProtoBaseImpl) InterceptorCall() ProtoInterceptor {
@@ -222,16 +229,25 @@ func (p *ProtoBaseImpl) InterceptorDispatch() ProtoInterceptor {
 	return p.dispatchInterceptor
 }
 
+func (p *ProtoBaseImpl) InterceptorError() ProtoInterceptor {
+	return p.errorInterceptor
+}
+
 func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args ...interface{}) error {
 	if p.dispatchInterceptor == nil {
 		return handler(msg, args...)
 	}
-	return p.dispatchInterceptor(msg, handler, args...)
+	err := p.dispatchInterceptor(msg, handler, args...)
+	if err != nil {
+		p.errorInterceptor(msg, nil, err)
+	}
+	return err
 }
 
 type protoBaseOptions struct {
 	calls     []ProtoInterceptor
 	dispatchs []ProtoInterceptor
+	errors    []ProtoInterceptor
 }
 
 type ProtoOption func(ops *protoBaseOptions)
@@ -245,6 +261,7 @@ func ProtoBaseBuild(opts ...ProtoOption) ProtoBaseImpl {
 	ret := ProtoBaseImpl{}
 	ret.callInterceptor = ProtoInterceptorChain(data.calls...)
 	ret.dispatchInterceptor = ProtoInterceptorChain(data.dispatchs...)
+	ret.errorInterceptor = ProtoInterceptorChain(data.errors...)
 	return ret
 }
 
@@ -257,5 +274,11 @@ func ProtoWithInterceptorCall(interceptor ProtoInterceptor) ProtoOption {
 func ProtoWithInterceptorDispatch(interceptor ProtoInterceptor) ProtoOption {
 	return func(ops *protoBaseOptions) {
 		ops.dispatchs = append(ops.dispatchs, interceptor)
+	}
+}
+
+func ProtoWithInterceptorError(interceptor ProtoInterceptor) ProtoOption {
+	return func(ops *protoBaseOptions) {
+		ops.errors = append(ops.errors, interceptor)
 	}
 }

@@ -58,14 +58,25 @@ func genService(g *protogen.GeneratedFile, srv *protogen.Service) error {
 	return nil
 }
 
-func methodOnlySend(method *protogen.Method) bool {
+const (
+	MethodSend    = "SEND"
+	MethodCall    = "CALL"
+	MethodRawCall = "RAW_CALL"
+)
+
+func methodType(method *protogen.Method) string {
 	comments := strings.Split(string(method.Comments.Leading), ";")
 	for _, comment := range comments {
-		if strings.TrimSpace(comment) == "onlysend" {
-			return true
+		t := strings.TrimSpace(comment)
+		if t == MethodSend || t == MethodCall || t == MethodRawCall {
+			return t
 		}
 	}
-	return false
+	return MethodCall
+}
+
+func methodTypeRaw(t string) bool {
+	return t == MethodSend || t == MethodRawCall
 }
 
 func genServiceInterface(g *protogen.GeneratedFile, srv *protogen.Service) {
@@ -77,7 +88,7 @@ func genServiceInterface(g *protogen.GeneratedFile, srv *protogen.Service) {
 			continue
 		}
 
-		if methodOnlySend(method) {
+		if methodTypeRaw(methodType(method)) {
 			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") error")
 		} else {
 			g.P(method.Comments.Leading, "On", method.GoName, "(*", gactorPackage.Ident("DispatchMessage"), ", *", genMessageName(method.Input), ") (*", genMessageName(method.Output), ", error)")
@@ -108,12 +119,12 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 		g.P("\"", srv.GoName, ".", method.GoName, "\",")
 		g.P("func(ctx *", gactorPackage.Ident("DispatchMessage"), ", args ... interface{}) error {")
 
-		if methodOnlySend(method) {
+		if methodTypeRaw(methodType(method)) {
 			g.P("err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
 			g.P("if err != nil {")
 			g.P("ctx.System.Logger().Errorf(\"message process error:%#v\", err.Error())")
-			g.P("return err")
 			g.P("}")
+			g.P("return err")
 		} else {
 			g.P("rsp, err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
 			g.P("")
@@ -122,9 +133,9 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 			g.P("} else {")
 			g.P("ctx.Response(nil, rsp)")
 			g.P("}")
+			g.P("return nil")
 		}
 
-		g.P("return nil")
 		g.P("},")
 		g.P("func() ", protoPackage.Ident("Message"), " { return new(", genMessageName(method.Input), ") },")
 		g.P("func() ", protoPackage.Ident("Message"), " { return new(", genMessageName(method.Output), ") },")
@@ -145,7 +156,7 @@ func genClient(g *protogen.GeneratedFile, srv *protogen.Service) {
 			continue
 		}
 
-		if methodOnlySend(method) {
+		if methodType(method) == MethodSend {
 			g.P("func (client *", srv.GoName, "Client) ", method.GoName,
 				"(system * ", gactorPackage.Ident("ActorSystem"),
 				", actor ", gactorPackage.Ident("Actor"),

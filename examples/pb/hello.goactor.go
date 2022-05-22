@@ -5,23 +5,23 @@ package hello
 
 import (
 	context "context"
-	goactor "github.com/lsg2020/go-actor"
+	go_actor "github.com/lsg2020/go-actor"
 	proto "google.golang.org/protobuf/proto"
 )
 
 // HelloServiceInterface is the server API for HelloService service.
 type HelloServiceInterface interface {
-	// onlysend;test send protocol
-	OnSend(*goactor.DispatchMessage, *Request) error
-	OnAdd(*goactor.DispatchMessage, *Request) (*Response, error)
-	OnTestCallAdd(*goactor.DispatchMessage, *Request) (*Response, error)
+	// SEND;test send protocol
+	OnSend(*go_actor.DispatchMessage, *Request) error
+	OnAdd(*go_actor.DispatchMessage, *Request) (*Response, error)
+	OnTestCallAdd(*go_actor.DispatchMessage, *Request) (*Response, error)
 }
 
-func RegisterHelloService(s HelloServiceInterface, proto goactor.Proto) {
+func RegisterHelloService(s HelloServiceInterface, proto go_actor.Proto) {
 	reg := &HelloServiceProto{s: s}
 	reg.register(proto)
 }
-func NewHelloServiceClient(proto goactor.Proto) *HelloServiceClient {
+func NewHelloServiceClient(proto go_actor.Proto) *HelloServiceClient {
 	client := &HelloServiceClient{Proto: proto}
 	return client
 }
@@ -30,16 +30,15 @@ type HelloServiceProto struct {
 	s HelloServiceInterface
 }
 
-func (s *HelloServiceProto) register(p goactor.Proto) {
+func (s *HelloServiceProto) register(p go_actor.Proto) {
 	p.Register(
 		"HelloService.Send",
-		func(ctx *goactor.DispatchMessage, args ...interface{}) error {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			err := s.s.OnSend(ctx, args[0].(*Request))
 			if err != nil {
 				ctx.System.Logger().Errorf("message process error:%#v", err.Error())
-				return err
 			}
-			return nil
+			return err
 		},
 		func() proto.Message { return new(Request) },
 		func() proto.Message { return new(Empty) },
@@ -47,7 +46,7 @@ func (s *HelloServiceProto) register(p goactor.Proto) {
 
 	p.Register(
 		"HelloService.Add",
-		func(ctx *goactor.DispatchMessage, args ...interface{}) error {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			rsp, err := s.s.OnAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -63,7 +62,7 @@ func (s *HelloServiceProto) register(p goactor.Proto) {
 
 	p.Register(
 		"HelloService.TestCallAdd",
-		func(ctx *goactor.DispatchMessage, args ...interface{}) error {
+		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			rsp, err := s.s.OnTestCallAdd(ctx, args[0].(*Request))
 
 			if err != nil {
@@ -80,16 +79,16 @@ func (s *HelloServiceProto) register(p goactor.Proto) {
 }
 
 type HelloServiceClient struct {
-	Proto goactor.Proto
+	Proto go_actor.Proto
 }
 
-func (client *HelloServiceClient) Send(system *goactor.ActorSystem, actor goactor.Actor, dest *goactor.ActorAddr, req *Request, options *goactor.CallOptions) error {
+func (client *HelloServiceClient) Send(system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) error {
 	err := actor.SendProto(system, dest, client.Proto.Id(), options, "HelloService.Send", req)
 
 	return err
 }
 
-func (client *HelloServiceClient) Add(ctx context.Context, system *goactor.ActorSystem, actor goactor.Actor, dest *goactor.ActorAddr, req *Request, options *goactor.CallOptions) (*Response, error) {
+func (client *HelloServiceClient) Add(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, error) {
 	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.Add", req)
 
 	if err != nil {
@@ -98,7 +97,7 @@ func (client *HelloServiceClient) Add(ctx context.Context, system *goactor.Actor
 	return rsp[0].(*Response), nil
 }
 
-func (client *HelloServiceClient) TestCallAdd(ctx context.Context, system *goactor.ActorSystem, actor goactor.Actor, dest *goactor.ActorAddr, req *Request, options *goactor.CallOptions) (*Response, error) {
+func (client *HelloServiceClient) TestCallAdd(ctx context.Context, system *go_actor.ActorSystem, actor go_actor.Actor, dest *go_actor.ActorAddr, req *Request, options *go_actor.CallOptions) (*Response, error) {
 	rsp, err := actor.CallProto(ctx, system, dest, client.Proto.Id(), options, "HelloService.TestCallAdd", req)
 
 	if err != nil {
