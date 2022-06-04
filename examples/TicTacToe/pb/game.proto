@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package message;
+option go_package = "./;message";
+
+message ActorAddress {
+  uint64 node_instance_id = 1;
+  uint32 handle = 2;
+}
+
+message GameInfo {
+  string GameId = 1 [json_name = "gameId"];
+  string Name = 2 [json_name = "name"];
+  int32 State = 3 [json_name = "state"];
+  bool YourMove = 4 [json_name = "yourMove"];
+  bool GameStarter = 5 [json_name = "gameStarter"];
+  repeated string UserNames = 6 [json_name = "usernames"];
+  int32 NumMoves = 7 [json_name = "numMoves"];
+}
+
+message MoveStep {
+  int32 x = 1 [json_name = "x"];
+  int32 y = 2 [json_name = "y"];
+}
+
+message GameMoves {
+  GameInfo summary = 1  [json_name = "summary"];
+  repeated MoveStep moves = 2  [json_name = "moves"];
+}
+
+message AvailableGame {
+  string GameId = 1 [json_name = "gameId"];
+  string Name = 2 [json_name = "name"];
+}
+
+service ManagerService {
+  rpc NewGame(ManagerNewGameRequest) returns (ManagerNewGameResponse) {}
+  rpc GetGame(ManagerGetGameRequest) returns (ManagerGetGameResponse) {}
+  rpc GameList(ManagerGameListRequest) returns (ManagerGameListResponse) {}
+  rpc FreeGame(ManagerFreeGameRequest) returns (ManagerFreeGameResponse) {}
+}
+
+message ManagerNewGameRequest {
+  string Name = 1;
+  ActorAddress Player = 2;
+}
+
+message ManagerNewGameResponse {
+}
+
+message ManagerGetGameRequest {
+  string GameId = 1;
+}
+
+message ManagerGetGameResponse {
+  ActorAddress Game = 1;
+}
+
+message ManagerGameListRequest {
+}
+
+message ManagerGameListResponse {
+  repeated AvailableGame Games = 1;
+}
+
+message ManagerFreeGameRequest {
+  string GameId = 1;
+}
+
+message ManagerFreeGameResponse {
+
+}
+
+service PlayerService {
+  rpc SetName(PlayerSetNameRequest) returns (PlayerSetNameResponse) {}
+  rpc Index(PlayerIndexRequest) returns (PlayerIndexResponse) {}
+  rpc CreateGame(PlayerCreateGameRequest) returns (PlayerCreateGameResponse) {}
+  rpc GetMoves(PlayerGetMovesRequest) returns (PlayerGetMovesResponse) {}
+  rpc MakeMove(PlayerMakeMoveRequest) returns (PlayerMakeMoveResponse) {}
+  rpc Join(PlayerJoinRequest) returns (PlayerJoinResponse) {}
+
+  rpc OnJoinGame(PlayerOnJoinGameRequest) returns (PlayerOnJoinGameResponse) {}
+  rpc OnLeaveGame(PlayerOnLeaveGameRequest) returns (PlayerOnLeaveGameResponse) {}
+}
+
+message PlayerSetNameRequest {
+  string name = 1;
+}
+
+message PlayerSetNameResponse {
+}
+
+message PlayerIndexRequest {
+
+}
+
+message PlayerIndexResponse {
+  repeated GameInfo Games = 1 [json_name = "games"];
+  repeated AvailableGame Availables = 2 [json_name = "availables"];
+}
+
+message PlayerCreateGameRequest {
+}
+
+message PlayerCreateGameResponse{
+}
+
+message PlayerGetMovesRequest {
+  string GameId = 1;
+}
+
+message PlayerGetMovesResponse {
+    GameMoves moves = 1;
+}
+
+message PlayerMakeMoveRequest {
+  string GameId = 1;
+  int32 X = 2;
+  int32 Y = 3;
+}
+
+message PlayerMakeMoveResponse {
+
+}
+
+message PlayerJoinRequest {
+  string GameId = 1;
+}
+
+message PlayerJoinResponse {
+
+}
+
+message PlayerOnJoinGameRequest {
+  string GameId = 1;
+  ActorAddress Addr = 2;
+}
+
+message PlayerOnJoinGameResponse {
+  string Name = 1;
+}
+
+message PlayerOnLeaveGameRequest {
+  string GameId = 1;
+}
+
+message PlayerOnLeaveGameResponse {
+}
+
+service GameService {
+  rpc Join(GameJoinRequest) returns (GameJoinResponse) {}
+  rpc Leave(GameLeaveRequest) returns (GameLeaveResponse) {}
+  rpc Info(GameInfoRequest) returns (GameInfoResponse) {}
+  rpc GetMoves(GameGetMovesRequest) returns (GameGetMovesResponse) {}
+  rpc MakeMove(GameMakeMoveRequest) returns (GameMakeMoveResponse) {}
+}
+
+message GameJoinRequest {
+  ActorAddress player = 1;
+}
+
+message GameJoinResponse {
+}
+
+message GameLeaveRequest {
+  ActorAddress player = 1;
+}
+
+message GameLeaveResponse {
+
+}
+
+message GameInfoRequest {
+  ActorAddress player = 1;
+}
+
+message GameInfoResponse {
+  GameInfo game = 1;
+}
+
+message GameGetMovesRequest {
+  ActorAddress player = 1;
+}
+
+message GameGetMovesResponse {
+  GameMoves info = 1;
+}
+
+message GameMakeMoveRequest {
+  ActorAddress player = 1;
+  int32 x = 2;
+  int32 y = 3;
+}
+
+message GameMakeMoveResponse {
+
+}

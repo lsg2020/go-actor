@@ -47,6 +47,8 @@ type Actor interface {
 	GetExecuter() Executer
 	Context() context.Context
 	GetState() ActorState
+	GetProto(id int) Proto
+	GetAddr(system *ActorSystem) *ActorAddr
 
 	Kill()
 	Sleep(d time.Duration)
@@ -140,7 +142,7 @@ func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCt
 	return msg
 }
 
-func (a *actorImpl) getProto(id int) Proto {
+func (a *actorImpl) GetProto(id int) Proto {
 	for _, p := range a.ops.protos {
 		if p.Id() == id {
 			return p
@@ -179,7 +181,7 @@ func (a *actorImpl) wait(ctx context.Context, session int) (interface{}, error) 
 }
 
 func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) error {
-	proto := a.getProto(protocol)
+	proto := a.GetProto(protocol)
 	if proto == nil {
 		return ErrProtocolNotExists
 	}
@@ -209,7 +211,7 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 }
 
 func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destination *ActorAddr, protocol int, options *CallOptions, data ...interface{}) ([]interface{}, error) {
-	proto := a.getProto(protocol)
+	proto := a.GetProto(protocol)
 	if proto == nil {
 		return nil, ErrProtocolNotExists
 	}
@@ -263,6 +265,13 @@ func (a *actorImpl) Dispatch(system *ActorSystem, msg *DispatchMessage) {
 	msg.Actor = a
 
 	a.executer.OnMessage(msg)
+}
+
+func (a *actorImpl) GetAddr(system *ActorSystem) *ActorAddr {
+	a.actorMutex.Lock()
+	addr := a.addrs[system]
+	a.actorMutex.Unlock()
+	return addr
 }
 
 func (a *actorImpl) onRegister(system *ActorSystem, addr *ActorAddr) {
@@ -470,7 +479,7 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 
 	a.cb = func(msg *DispatchMessage) {
 		protocol := msg.Headers.GetInt(HeaderIdProtocol)
-		p := a.getProto(protocol)
+		p := a.GetProto(protocol)
 		if p == nil {
 			a.Logger().Errorf("actor message protocol not exists %d", protocol)
 			return

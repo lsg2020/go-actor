@@ -55,7 +55,7 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	}
 
 	executer.workId = workId
-	for {
+	for !finish {
 		select {
 		case msg := <-executer.ch:
 			protocol := msg.Headers.GetInt(goactor.HeaderIdProtocol)
