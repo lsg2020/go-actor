@@ -9,9 +9,6 @@ import (
 	"github.com/lsg2020/go-actor/protocols"
 )
 
-// TODO 发消息时目标不存在？ 本地/远程
-
-// TODO
 var ExistsPlayer = make(map[uint64]bool)
 
 func NewPlayer(system *goactor.ActorSystem, e goactor.Executer) *goactor.ActorAddr {
