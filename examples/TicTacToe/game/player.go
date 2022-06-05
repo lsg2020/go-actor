@@ -9,6 +9,7 @@ import (
 	"github.com/lsg2020/go-actor/protocols"
 )
 
+// TODO call 消息 对方被删除
 var ExistsPlayer = make(map[uint64]bool)
 
 func NewPlayer(system *goactor.ActorSystem, e goactor.Executer) *goactor.ActorAddr {

@@ -5,8 +5,8 @@ package message
 
 import (
 	context "context"
+	proto "github.com/golang/protobuf/proto"
 	go_actor "github.com/lsg2020/go-actor"
-	proto "google.golang.org/protobuf/proto"
 )
 
 // ManagerServiceInterface is the server API for ManagerService service.

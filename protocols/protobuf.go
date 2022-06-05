@@ -3,8 +3,8 @@ package protocols
 import (
 	"fmt"
 
+	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
-	"google.golang.org/protobuf/proto"
 )
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发

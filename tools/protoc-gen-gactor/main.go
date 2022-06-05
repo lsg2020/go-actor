@@ -13,7 +13,7 @@ var (
 )
 
 var (
-	protoPackage  = protogen.GoImportPath("google.golang.org/protobuf/proto")
+	protoPackage  = protogen.GoImportPath("github.com/golang/protobuf/proto")
 	gactorPackage = protogen.GoImportPath("github.com/lsg2020/go-actor")
 )
 
