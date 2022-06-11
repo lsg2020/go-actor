@@ -26,7 +26,7 @@ type DispatchMessage struct {
 // Response 回复通知消息的接口
 func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
 	if err != nil && msg.RequestProto != nil {
-		msg.RequestProto.InterceptorError()(msg, nil, err)
+		_ = msg.RequestProto.InterceptorError()(msg, nil, err)
 	}
 
 	if err != nil {
@@ -255,7 +255,7 @@ func (p *ProtoBaseImpl) Trigger(handler ProtoHandler, msg *DispatchMessage, args
 	}
 	err := p.dispatchInterceptor(msg, handler, args...)
 	if err != nil {
-		p.errorInterceptor(msg, nil, err)
+		_ = p.errorInterceptor(msg, nil, err)
 	}
 	return err
 }

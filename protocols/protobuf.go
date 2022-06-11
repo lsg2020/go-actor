@@ -17,13 +17,13 @@ func NewProtobuf(id int, opts ...goactor.ProtoOption) *Protobuf {
 	}))
 	allopts = append(allopts, opts...)
 
-	proto := &Protobuf{
+	p := &Protobuf{
 		ProtoBaseImpl: goactor.ProtoBaseBuild(allopts...),
 		protoId:       id,
 		cmds:          make(map[string]*PbMethod),
 	}
 
-	return proto
+	return p
 }
 
 type PbMethod struct {

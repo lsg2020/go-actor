@@ -99,18 +99,19 @@ func BuildHeaderInt64(id int, val int64) Header {
 type Headers []Header
 
 func (h Headers) Put(datas ...Header) Headers {
-	if cap(h) == 0 {
-		h = make([]Header, 0, len(datas))
+	headers := h
+	if cap(headers) == 0 {
+		headers = make([]Header, 0, len(datas))
 	}
 	for _, data := range datas {
-		exists := h.Get(data.Id)
+		exists := headers.Get(data.Id)
 		if exists != nil {
 			*exists = data
 		} else {
-			h = append(h, data)
+			headers = append(headers, data)
 		}
 	}
-	return h
+	return headers
 }
 
 func (h Headers) Get(id int) *Header {

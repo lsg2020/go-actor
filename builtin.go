@@ -48,7 +48,7 @@ func (p *ProtoSystem) GetOptions() []ProtoOption {
 	return nil
 }
 
-func (p *ProtoSystem) Register(cmd string, cb ProtoHandler, extend ...interface{}) {
+func (p *ProtoSystem) Register(cmd string, cb ProtoHandler, _ ...interface{}) {
 	p.cmds[cmd] = cb
 }
 
@@ -68,11 +68,11 @@ func (p *ProtoSystem) OnMessage(msg *DispatchMessage) {
 	}
 }
 
-func (p *ProtoSystem) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
+func (p *ProtoSystem) Pack(_ interface{}, args ...interface{}) (interface{}, interface{}, error) {
 	return args, nil, nil
 }
 
-func (p *ProtoSystem) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error) {
+func (p *ProtoSystem) UnPack(_ interface{}, pack interface{}) ([]interface{}, interface{}, error) {
 	return pack.([]interface{}), nil, nil
 }
 
@@ -84,13 +84,13 @@ func (p *ProtoSystem) init() {
 	p.Register("fork", p.onFork)
 }
 
-func (p *ProtoSystem) onInit(msg *DispatchMessage, args ...interface{}) error {
+func (p *ProtoSystem) onInit(msg *DispatchMessage, _ ...interface{}) error {
 	a := msg.Actor.(*actorImpl)
 	a.onInit()
 	return nil
 }
 
-func (p *ProtoSystem) onKill(msg *DispatchMessage, args ...interface{}) error {
+func (p *ProtoSystem) onKill(msg *DispatchMessage, _ ...interface{}) error {
 	a := msg.Actor.(*actorImpl)
 	a.onKill()
 	return nil
@@ -112,7 +112,7 @@ func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) error {
 	return nil
 }
 
-func (p *ProtoSystem) onFork(msg *DispatchMessage, args ...interface{}) error {
+func (p *ProtoSystem) onFork(_ *DispatchMessage, args ...interface{}) error {
 	/*
 		f := reflect.ValueOf(args[0])
 		rParams := make([]reflect.Value, len(args[1].([]interface{})))

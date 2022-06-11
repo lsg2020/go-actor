@@ -146,12 +146,15 @@ func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCan
 		trans.responseMutex.Unlock()
 	}
 
-	buf, pberr := proto.Marshal(msg.ToPB())
-	if pberr != nil {
-		return nil, goactor.ErrorWrapf(pberr, "pb marshal error")
+	buf, err := proto.Marshal(msg.ToPB())
+	if err != nil {
+		return nil, goactor.ErrorWrapf(err, "pb marshal error")
 	}
 
-	trans.sendMsg(serviceName, nodeName, buf)
+	err = trans.sendMsg(serviceName, nodeName, buf)
+	if err != nil {
+		return nil, goactor.ErrorWrapf(err, "service:%s node:%s", serviceName, nodeName)
+	}
 
 	if reqsession >= 0 {
 		return func() {

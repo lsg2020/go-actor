@@ -21,30 +21,31 @@ type actorSystemOptions struct {
 }
 
 func (options *actorSystemOptions) init() (*actorSystemOptions, error) {
-	if options == nil {
-		options = &actorSystemOptions{}
+	opts := options
+	if opts == nil {
+		opts = &actorSystemOptions{}
 	}
-	if options.name == "" {
-		return options, ErrInitNeedName
+	if opts.name == "" {
+		return opts, ErrInitNeedName
 	}
-	if options.instanceID == 0 {
-		return options, ErrInitNeedInstanceId
-	}
-
-	if options.etcd == nil {
-		options.etcd = []string{"http://127.0.0.1:2379"}
-	}
-	if options.etcdPrefix == "" {
-		options.etcdPrefix = "gactor"
-	}
-	if options.logger == nil {
-		options.logger = DefaultLogger()
-	}
-	if options.ctx == nil {
-		options.ctx = context.Background()
+	if opts.instanceID == 0 {
+		return opts, ErrInitNeedInstanceId
 	}
 
-	return options, nil
+	if opts.etcd == nil {
+		opts.etcd = []string{"http://127.0.0.1:2379"}
+	}
+	if opts.etcdPrefix == "" {
+		opts.etcdPrefix = "gactor"
+	}
+	if opts.logger == nil {
+		opts.logger = DefaultLogger()
+	}
+	if opts.ctx == nil {
+		opts.ctx = context.Background()
+	}
+
+	return opts, nil
 }
 
 func WithTransport(transport Transport) ActorSystemOption {
