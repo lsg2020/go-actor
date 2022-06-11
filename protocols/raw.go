@@ -1,6 +1,9 @@
 package protocols
 
-import goactor "github.com/lsg2020/go-actor"
+import (
+	goactor "github.com/lsg2020/go-actor"
+	"go.uber.org/zap"
+)
 
 func NewRaw(id int, opts ...goactor.ProtoOption) *Raw {
 	return &Raw{
@@ -36,13 +39,13 @@ func (raw *Raw) OnMessage(msg *goactor.DispatchMessage) {
 	cmd := datas[0].(string)
 	cb := raw.cmds[cmd]
 	if cb == nil { // nolint
-		msg.Actor.Logger().Warnf("raw:%d cmd not exists %s\n", raw.protoId, cmd)
+		msg.Actor.Logger().Error("cmd not exists", zap.Int("proto_id", raw.protoId), zap.String("cmd", cmd))
 		return
 	}
 
 	err := raw.Trigger(cb, msg, msg.Content.([]interface{})...)
 	if err != nil {
-		msg.Actor.Logger().Warnf("raw:%s msg error %s\n", cmd, err)
+		msg.Actor.Logger().Error("msg error", zap.Int("proto_id", raw.protoId), zap.String("cmd", cmd))
 	}
 }
 

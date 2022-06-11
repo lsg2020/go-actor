@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
+	"go.uber.org/zap"
 )
 
 // NewTcp 创建一个tcp传输器
@@ -105,18 +106,18 @@ func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCa
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
-			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.ErrorWrapf(goactor.ErrNodeMiss, "node:%d", destination.NodeInstanceId)
 		}
 		nodeAddr, ok := cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, goactor.Errorf("node not exists:%d", destination.NodeInstanceId)
+			return nil, goactor.ErrorWrapf(goactor.ErrTransportMiss, "trans:%s", trans.Name())
 		}
 
 		conn, err := net.Dial("tcp", nodeAddr)
 		if err != nil {
 			trans.nodeMutex.Unlock()
-			return nil, goactor.ErrorWrap(err)
+			return nil, goactor.ErrorWrapf(err, "connect err %s", nodeAddr)
 		}
 
 		tcpConn = trans.newTcpConnect(conn, func() {
@@ -144,7 +145,7 @@ func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCa
 
 	buf, pberr := proto.Marshal(msg.ToPB())
 	if pberr != nil {
-		return nil, goactor.ErrorWrap(pberr)
+		return nil, goactor.ErrorWrapf(pberr, "pb marshal")
 	}
 	tcpConn.send(buf)
 
@@ -188,7 +189,7 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 		msg := &message.Message{}
 		err := proto.Unmarshal(msgBuf, msg)
 		if err != nil {
-			trans.system.Logger().Warnf("receive invalid pack %s\n", err.Error())
+			trans.system.Logger().Error("receive invalid pack", zap.Error(err))
 			return
 		}
 
@@ -205,12 +206,12 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 			if requestMsg != nil {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			} else {
-				trans.system.Logger().Warnf("dispatch response message not exists session: %d\n", dispatch.Headers.GetInt(goactor.HeaderIdTransSession))
+				trans.system.Logger().Error("dispatch response message not exists", zap.Int("session", dispatch.Headers.GetInt(goactor.HeaderIdTransSession)))
 			}
 		} else {
 			err := trans.system.Dispatch(dispatch)
 			if err != nil {
-				trans.system.Logger().Warnf("dispatch message error: %s\n", err.Error())
+				trans.system.Logger().Error("dispatch message error", zap.Error(err))
 			}
 		}
 	}

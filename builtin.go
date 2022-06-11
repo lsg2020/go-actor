@@ -1,7 +1,9 @@
 package goactor
 
+import "go.uber.org/zap"
+
 // NewProtoSystem 创建一个内部协议,处理init/kill/exec
-func NewProtoSystem(logger Logger) *ProtoSystem {
+func NewProtoSystem() *ProtoSystem {
 	p := &ProtoSystem{
 		ProtoBaseImpl: ProtoBaseBuild(
 			ProtoWithInterceptorCall(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
@@ -14,7 +16,11 @@ func NewProtoSystem(logger Logger) *ProtoSystem {
 						return
 					}
 					if r := recover(); r != nil {
-						logger.Errorf("proto recovery cmd:%s args:%#v", msg.Headers.GetStr(HeaderIdMethod), args)
+						logger := DefaultLogger()
+						if msg.Actor != nil {
+							logger = msg.Actor.Logger()
+						}
+						logger.Error("system recover", zap.String("cmd", msg.Headers.GetStr(HeaderIdMethod)), zap.Any("args", args))
 					}
 				}()
 				return handler(msg, args...)
@@ -52,13 +58,13 @@ func (p *ProtoSystem) OnMessage(msg *DispatchMessage) {
 	cmd := datas[0].(string)
 	cb := p.cmds[cmd]
 	if cb == nil {
-		msg.Actor.Logger().Errorf("system message cmd:%s not exists\n", cmd)
+		msg.Actor.Logger().Error("system message not exists", zap.String("cmd", cmd))
 		return
 	}
 
 	err := p.Trigger(cb, msg, datas[1:]...)
 	if err != nil {
-		msg.Actor.Logger().Errorf("system:%s msg error %s\n", cmd, err)
+		msg.Actor.Logger().Error("system msg error", zap.String("cmd", cmd), zap.Error(err))
 	}
 }
 

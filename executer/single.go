@@ -8,6 +8,7 @@ import (
 	"time"
 
 	goactor "github.com/lsg2020/go-actor"
+	"go.uber.org/zap"
 )
 
 type SingleGoroutineResponseInfo struct {
@@ -76,7 +77,7 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 					if msg.Actor != nil {
 						logger = msg.Actor.Logger()
 					}
-					logger.Warnf("dispatch response miss %d\n", session)
+					logger.Warn("dispatch response miss", zap.Int("session", session))
 				}
 				continue
 			}
@@ -89,7 +90,7 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 				if msg.Actor != nil {
 					logger = msg.Actor.Logger()
 				}
-				logger.Errorf("actor message callback not set\n")
+				logger.Error("actor message callback not set")
 			}
 		case <-executer.context.Done():
 			finish = true

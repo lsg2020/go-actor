@@ -1,9 +1,9 @@
 package goactor
 
 import (
-	"bytes"
 	"fmt"
-	"runtime"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -17,114 +17,48 @@ const (
 	ErrCodeActorMiss         = 7
 	ErrCodeTransportMiss     = 8
 	ErrCodeResponseMiss      = 9
+	ErrCodeNodeMiss          = 10
 )
-
-var ErrorCodes = []string{
-	"System",
-	"CallTimeOut",
-	"ProtocolNotExists",
-	"ResponseTypeErr",
-	"PackErr",
-	"CmdNotExists",
-	"NeedDestination",
-	"ActorMiss",
-	"TransportMiss",
-	"ResponseMiss",
-}
 
 var (
-	ErrCallTimeOut       = ErrorSimple(ErrCodeCallTimeOut, "")
-	ErrProtocolNotExists = ErrorSimple(ErrCodeProtocolNotExists, "")
-	ErrNeedDestination   = ErrorSimple(ErrCodeNeedDestination, "")
-	ErrActorMiss         = ErrorSimple(ErrCodeActorMiss, "")
-	ErrTransportMiss     = ErrorSimple(ErrCodeTransportMiss, "")
-	ErrResponseMiss      = ErrorSimple(ErrCodeResponseMiss, "")
+	ErrInitNeedName       = Error(ErrCodeSystem, "actor system name not set")
+	ErrInitNeedInstanceId = Error(ErrCodeSystem, "actor system instance id not set")
+	ErrTransportMiss      = Error(ErrCodeTransportMiss, "transport miss")
+	ErrNeedDestination    = Error(ErrCodeNeedDestination, "need destination")
+	ErrActorMiss          = Error(ErrCodeActorMiss, "actor miss")
+	ErrProtocolNotExists  = Error(ErrCodeProtocolNotExists, "protocol not exists")
+	ErrCallTimeOut        = Error(ErrCodeCallTimeOut, "call timeout")
+	ErrResponseTypeErr    = Error(ErrCodeResponseTypeErr, "response type error")
+	ErrResponseMiss       = Error(ErrCodeResponseMiss, "response miss")
+	ErrPackErr            = Error(ErrCodePackErr, "pack err")
+	ErrCmdNotExists       = Error(ErrCodeCmdNotExists, "cmd not exists")
+	ErrNodeMiss           = Error(ErrCodeNodeMiss, "node miss")
 )
 
-type ErrFrames []ErrFrame
 type ActorError struct {
-	Code   int
-	Msg    string
-	Frames ErrFrames
-}
-
-// ErrFrame is a single step in stack trace.
-type ErrFrame struct {
-	// Func contains a function name.
-	Func string
-	// Line contains a line number.
-	Line int
-	// Path contains a file path.
-	Path string
-}
-
-// String formats Frame to string.
-func (f ErrFrame) String() string {
-	return fmt.Sprintf("%s:%d %s", f.Path, f.Line, f.Func)
-}
-
-func (fs ErrFrames) String() string {
-	var buffer bytes.Buffer
-	for _, f := range fs {
-		buffer.WriteString(f.String())
-	}
-	return buffer.String()
-}
-
-func TraceFrames(skip int) ErrFrames {
-	frames := make([]ErrFrame, 0, 20)
-	for {
-		pc, path, line, ok := runtime.Caller(skip)
-		if !ok {
-			break
-		}
-		fn := runtime.FuncForPC(pc)
-		frame := ErrFrame{
-			Func: fn.Name(),
-			Line: line,
-			Path: path,
-		}
-		frames = append(frames, frame)
-		skip++
-	}
-	return frames
+	Code int
+	Msg  string
 }
 
 func (e *ActorError) Error() string {
-	if e == nil {
-		return ""
-	}
-	if e.Code < len(ErrorCodes) {
-		return fmt.Sprintf("code:[%d](%s) msg:%s stack:%s", e.Code, ErrorCodes[e.Code], e.Msg, e.Frames.String())
-	}
-
-	return fmt.Sprintf("code:[%d] msg:%s stack:%s", e.Code, e.Msg, e.Frames.String())
-
+	return fmt.Sprintf("[%d]%s", e.Code, e.Msg)
 }
 
-func ErrorSimple(code int, msg string) *ActorError {
+func Error(code int, msg string) *ActorError {
 	return &ActorError{
 		Code: code,
 		Msg:  msg,
 	}
 }
 
-func ErrorActor(code int, msg string) *ActorError {
-	return &ActorError{
-		Code:   code,
-		Msg:    msg,
-		Frames: TraceFrames(2),
+func ErrorWrapf(err error, format string, args ...interface{}) *ActorError {
+	if e, ok := err.(*ActorError); ok {
+		e.Msg = fmt.Sprintf(format, args...) + ": " + e.Msg
+		return e
 	}
-}
 
-func Errorf(format string, args ...interface{}) *ActorError {
-	return ErrorSimple(ErrCodeSystem, fmt.Sprintf(format, args...))
-}
-
-func ErrorWrap(err error) *ActorError {
 	return &ActorError{
-		Code:   ErrCodeSystem,
-		Msg:    err.Error(),
-		Frames: TraceFrames(2),
+		Code: ErrCodeSystem,
+		Msg:  errors.Wrapf(err, format, args...).Error(),
 	}
 }

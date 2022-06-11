@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	goactor "github.com/lsg2020/go-actor"
@@ -17,7 +18,7 @@ func (a *Actor) OnInit(actor goactor.Actor) {
 	actor.Fork(func() {
 		for {
 			a.Amount++
-			actor.Logger().Infof("%#v test sleep", a)
+			actor.Logger().Info(fmt.Sprintf("%#v test sleep", a))
 			actor.Sleep(time.Second)
 		}
 	})
@@ -28,11 +29,11 @@ func (a *Actor) OnInit(actor goactor.Actor) {
 		}
 	})
 
-	actor.Logger().Infof("actor init %#v", a)
+	actor.Logger().Info(fmt.Sprintf("actor init %#v", a))
 }
 
 func (a *Actor) OnRelease(actor goactor.Actor) {
-	actor.Logger().Infof("actor release %#v", a)
+	actor.Logger().Info(fmt.Sprintf("actor release %#v", a))
 }
 
 func main() {

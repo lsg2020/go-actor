@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // ActorInstance actor实例需要实现的接口,均在actor绑定的执行器中被执行
@@ -36,14 +38,16 @@ type ActorState int
 const (
 	ActorStateInit    ActorState = 1
 	ActorStateRunning ActorState = 2
-	ActorStateStop    ActorState = 3
+	ActorStateClosing ActorState = 3
+	ActorStateStop    ActorState = 4
 )
 
 // Actor actor操作接口
 type Actor interface {
 	Instance() ActorInstance
 	Callback() Callback
-	Logger() Logger
+	Logger() *zap.Logger
+	SetLogger(logger *zap.Logger)
 	GetExecuter() Executer
 	Context() context.Context
 	GetState() ActorState
@@ -89,7 +93,11 @@ func (a *actorImpl) Instance() ActorInstance {
 	return a.instance
 }
 
-func (a *actorImpl) Logger() Logger {
+func (a *actorImpl) SetLogger(logger *zap.Logger) {
+	a.ops.logger = logger
+}
+
+func (a *actorImpl) Logger() *zap.Logger {
 	return a.ops.logger
 }
 
@@ -289,7 +297,7 @@ func (a *actorImpl) onUnregister(system *ActorSystem) {
 func (a *actorImpl) onInit() {
 	defer func() {
 		if r := recover(); r != nil {
-			a.Logger().Errorf("actor start error %#v", r)
+			a.Logger().Error("actor start error", zap.Any("recover", r))
 			a.Kill()
 		}
 	}()
@@ -303,6 +311,11 @@ func (a *actorImpl) onInit() {
 }
 
 func (a *actorImpl) onKill() {
+	if a.state != ActorStateRunning {
+		return
+	}
+	a.state = ActorStateClosing
+
 	defer func() {
 		a.state = ActorStateStop
 		a.cancel()
@@ -416,50 +429,6 @@ func (a *actorImpl) Context() context.Context {
 	return a.context
 }
 
-type actorOptions struct {
-	logger Logger
-	protos []Proto
-	initcb func()
-	ctx    context.Context
-}
-
-func (ops *actorOptions) init() {
-	if ops.logger == nil {
-		ops.logger = DefaultLogger()
-	}
-	if ops.ctx == nil {
-		ops.ctx = context.Background()
-	}
-
-}
-
-// ActorOption actor的创建参数
-type ActorOption func(ops *actorOptions)
-
-func ActorWithLogger(logger Logger) ActorOption {
-	return func(ops *actorOptions) {
-		ops.logger = logger
-	}
-}
-
-func ActorWithProto(proto Proto) ActorOption {
-	return func(ops *actorOptions) {
-		ops.protos = append(ops.protos, proto)
-	}
-}
-
-func ActorWithInitCB(cb func()) ActorOption {
-	return func(ops *actorOptions) {
-		ops.initcb = cb
-	}
-}
-
-func ActorWithContext(ctx context.Context) ActorOption {
-	return func(ops *actorOptions) {
-		ops.ctx = ctx
-	}
-}
-
 // NewActor 创建一个actor,立即返回,如果需要等待创建完成可以使用 ActorWithInitCB
 func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Actor {
 	ops := &actorOptions{}
@@ -481,7 +450,7 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 		protocol := msg.Headers.GetInt(HeaderIdProtocol)
 		p := a.GetProto(protocol)
 		if p == nil {
-			a.Logger().Errorf("actor message protocol not exists %d", protocol)
+			a.Logger().Error("actor message protocol not exists", zap.Int("protocol", protocol))
 			return
 		}
 		msg.RequestProto = p
@@ -491,7 +460,7 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 
 	a.context, a.cancel = context.WithCancel(ops.ctx)
 
-	a.protoSystem = NewProtoSystem(ops.logger)
+	a.protoSystem = NewProtoSystem()
 	a.ops.protos = append(a.ops.protos, a.protoSystem)
 
 	// init message

@@ -7,6 +7,7 @@ import (
 	context "context"
 	proto "github.com/golang/protobuf/proto"
 	go_actor "github.com/lsg2020/go-actor"
+	zap "go.uber.org/zap"
 )
 
 // HelloServiceInterface is the server API for HelloService service.
@@ -36,7 +37,7 @@ func (s *HelloServiceProto) register(p go_actor.Proto) {
 		func(ctx *go_actor.DispatchMessage, args ...interface{}) error {
 			err := s.s.OnSend(ctx, args[0].(*Request))
 			if err != nil {
-				ctx.System.Logger().Errorf("message process error:%#v", err.Error())
+				ctx.System.Logger().Error("message process error", zap.Error(err))
 			}
 			return err
 		},

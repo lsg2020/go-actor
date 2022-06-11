@@ -8,6 +8,8 @@ const (
 	HeaderBytes     HeaderValType = 3
 	HeaderActorAddr HeaderValType = 4
 	HeaderInterface HeaderValType = 5
+	HeaderUint64    HeaderValType = 6
+	HeaderInt64     HeaderValType = 7
 )
 
 const (
@@ -19,9 +21,10 @@ const (
 	HeaderIdDestination         = 6
 	HeaderIdTransSession        = 7
 	HeaderIdTransAddress        = 8
-	HeaderIdRequestProtoPackCtx = 9
-	HeaderIdTracingSpan         = 10
-	HeaderIdTracingSpanCarrier  = 11
+	HeaderIdTransAddress2       = 9
+	HeaderIdRequestProtoPackCtx = 10
+	HeaderIdTracingSpan         = 11
+	HeaderIdTracingSpanCarrier  = 12
 )
 
 type Header struct {
@@ -33,6 +36,8 @@ type Header struct {
 	ValAddr      *ActorAddr
 	ValBytes     []byte
 	ValInterface interface{}
+	ValUint64    uint64
+	ValInt64     int64
 }
 
 func BuildHeaderIntRaw(id int, val int, private bool) Header {
@@ -73,6 +78,22 @@ func BuildHeaderInterfaceRaw(id int, val interface{}, private bool) Header {
 
 func BuildHeaderInterface(id int, val interface{}) Header {
 	return BuildHeaderInterfaceRaw(id, val, false)
+}
+
+func BuildHeaderUint64Raw(id int, val uint64, private bool) Header {
+	return Header{Id: id, Type: HeaderUint64, ValUint64: val, Private: private}
+}
+
+func BuildHeaderUint64(id int, val uint64) Header {
+	return BuildHeaderUint64Raw(id, val, false)
+}
+
+func BuildHeaderInt64Raw(id int, val int64, private bool) Header {
+	return Header{Id: id, Type: HeaderInt64, ValInt64: val, Private: private}
+}
+
+func BuildHeaderInt64(id int, val int64) Header {
+	return BuildHeaderInt64Raw(id, val, false)
 }
 
 type Headers []Header

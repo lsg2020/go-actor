@@ -1,10 +1,11 @@
 package protocols
 
 import (
-	"fmt"
+	"reflect"
 
 	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
+	"go.uber.org/zap"
 )
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
@@ -62,7 +63,7 @@ func (p *Protobuf) OnMessage(msg *goactor.DispatchMessage) {
 		if msg.Headers.GetInt(goactor.HeaderIdSession) != 0 {
 			msg.Response(err)
 		} else {
-			msg.Actor.Logger().Errorf("proto %d unpack error:%s\n", p.protoId, err.Error())
+			msg.Actor.Logger().Error("proto unpack error", zap.Int("proto_id", p.protoId), zap.Error(err))
 		}
 		return
 	}
@@ -72,7 +73,7 @@ func (p *Protobuf) OnMessage(msg *goactor.DispatchMessage) {
 
 	err = p.Trigger(cmd.CB, msg, msg.Content.([]interface{})...)
 	if err != nil {
-		msg.Actor.Logger().Errorf("proto:%s msg error %s\n", cmd.Name, err)
+		msg.Actor.Logger().Error("proto msg error", zap.String("cmd", cmd.Name), zap.Error(err))
 	}
 }
 
@@ -80,41 +81,41 @@ func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, inte
 	if ctx != nil {
 		// response msg
 		if len(args) != 1 {
-			return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "params len err")
+			return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d args len error %d", p.protoId, len(args))
 		}
 
 		msg, ok := args[0].(proto.Message)
 		if !ok {
-			return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "type err")
+			return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type err %s", p.protoId, reflect.TypeOf(args[0]).String())
 		}
 		buf, err := proto.Marshal(msg)
 		if err != nil {
-			return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, err.Error())
+			return nil, nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
 		}
 		return buf, nil, nil
 	}
 
 	// request msg
 	if len(args) != 2 {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "params len err")
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d params len err %d", p.protoId, len(args))
 	}
 
 	method, ok := args[0].(string)
 	if !ok {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "type err")
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type err %s", p.protoId, reflect.TypeOf(args[0]).String())
 	}
 	msg, ok := args[1].(proto.Message)
 	if !ok {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "type err")
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type err %s", p.protoId, reflect.TypeOf(args[1]).String())
 	}
 	buf, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, err.Error())
+		return nil, nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
 	}
 
 	cmd := p.cmds[method]
 	if cmd == nil {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodeCmdNotExists, fmt.Sprintf("method:%s not exists", method))
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrCmdNotExists, "protocol:%d method:%s", p.protoId, method)
 	}
 
 	return buf, cmd, nil
@@ -127,7 +128,7 @@ func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, int
 			var ok bool
 			buf, ok = args.([]byte)
 			if !ok {
-				return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "content err")
+				return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d content type error %s", p.protoId, reflect.TypeOf(args).String())
 			}
 		}
 
@@ -135,33 +136,33 @@ func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, int
 		rsp := ctx.(*PbMethod).Rsp()
 		err := proto.Unmarshal(buf, rsp)
 		if err != nil {
-			return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, err.Error())
+			return nil, nil, goactor.ErrorWrapf(err, "protocol:%d unmarshal error %s", p.protoId, rsp.String())
 		}
 		return []interface{}{rsp}, nil, nil
 	}
 
 	msg, ok := args.(*goactor.DispatchMessage)
 	if !ok {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "type err")
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type error %s", p.protoId, reflect.TypeOf(args).String())
 	}
 	var buf []byte
 	if msg.Content != nil {
 		var ok bool
 		buf, ok = msg.Content.([]byte)
 		if !ok {
-			return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, "content err")
+			return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type error %s", p.protoId, reflect.TypeOf(msg.Content).String())
 		}
 	}
 
 	cmd := p.cmds[msg.Headers.GetStr(goactor.HeaderIdMethod)]
 	if cmd == nil {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodeCmdNotExists, "method not exists: "+msg.Headers.GetStr(goactor.HeaderIdMethod))
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrCmdNotExists, "protocol:%d method: %s", p.protoId, msg.Headers.GetStr(goactor.HeaderIdMethod))
 	}
 
 	req := cmd.Req()
 	err := proto.Unmarshal(buf, req)
 	if err != nil {
-		return nil, nil, goactor.ErrorActor(goactor.ErrCodePackErr, err.Error())
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d unmarshal error %s", p.protoId, req.String())
 	}
 	return []interface{}{req}, cmd, nil
 }

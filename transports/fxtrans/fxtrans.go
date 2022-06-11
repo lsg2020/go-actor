@@ -1,31 +1,32 @@
-package nats
+package fxtrans
 
 import (
-	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 )
 
-func NewNats(servers string) *NatsTransport {
-	trans := &NatsTransport{
-		servers: servers,
+func NewFx(service string, node string, sendMsg func(string, string, []byte) error) *FxTransport {
+	trans := &FxTransport{
+		service: service,
+		node:    node,
+		sendMsg: sendMsg,
 	}
 	return trans
 }
 
-type NatsTransport struct {
+type FxTransport struct {
 	system  *goactor.ActorSystem
-	servers string
-	topic   string
-
-	nc *nats.Conn
+	service string
+	node    string
+	sendMsg func(string, string, []byte) error
 
 	nodeMutex sync.Mutex
+	services  map[uint64]string
 	nodes     map[uint64]string
 
 	responseMutex sync.Mutex
@@ -33,26 +34,24 @@ type NatsTransport struct {
 	session       int32
 }
 
-func (trans *NatsTransport) Name() string {
-	return "nats"
+func (trans *FxTransport) Name() string {
+	return "fxtrans"
 }
 
-func (trans *NatsTransport) URI() string {
-	return trans.topic
+func (trans *FxTransport) URI() string {
+	return trans.service + ":" + trans.node
 }
 
-func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
+func (trans *FxTransport) Init(system *goactor.ActorSystem) error {
+	trans.services = make(map[uint64]string)
 	trans.nodes = make(map[uint64]string)
 	trans.responses = make(map[int32]*goactor.DispatchMessage)
 	trans.session = 1
 	trans.system = system
-	nc, err := nats.Connect(trans.servers)
-	if err != nil {
-		return err
-	}
+	return nil
+}
 
-	node := fmt.Sprintf("%d", system.InstanceID())
-
+func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
 		responseMsg := &goactor.DispatchMessage{
 			ResponseErr: err,
@@ -65,27 +64,23 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 		)
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
-			system.Logger().Error("response pack error", zap.Error(perr))
+			trans.system.Logger().Error("response pack error", zap.Error(perr))
 			return
 		}
-		perr = nc.Publish(msg.Headers.GetStr(goactor.HeaderIdTransAddress), buf)
+
+		err = trans.sendMsg(msg.Headers.GetStr(goactor.HeaderIdTransAddress2), msg.Headers.GetStr(goactor.HeaderIdTransAddress), buf)
 		if err != nil {
-			system.Logger().Error("response pack error", zap.Error(perr))
+			trans.system.Logger().Error("fx transport response error", zap.Error(err))
 		}
 	}
 
-	trans.nc = nc
-	trans.topic = "node_" + node
-	_, err = nc.Subscribe(trans.topic, func(m *nats.Msg) {
-		msgBuf := m.Data
-
+	return func(buf []byte) {
 		msg := &message.Message{}
-		err = proto.Unmarshal(msgBuf, msg)
+		err := proto.Unmarshal(buf, msg)
 		if err != nil {
-			system.Logger().Error("receive invalid pack", zap.Error(err))
+			trans.system.Logger().Error("receive invalid pack ", zap.Error(err))
 			return
 		}
-
 		dispatch := &goactor.DispatchMessage{
 			DispatchResponse: response,
 		}
@@ -100,38 +95,38 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
 		} else {
-			err := trans.system.Dispatch(dispatch)
+			err = trans.system.Dispatch(dispatch)
 			if err != nil {
-				system.Logger().Error("dispatch message error", zap.Error(err))
+				trans.system.Logger().Error("dispatch message error", zap.Error(err))
 			}
 		}
-	})
-
-	return err
+	}
 }
 
-func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
+func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
 	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
 	if destination == nil {
 		return nil, goactor.ErrNeedDestination
 	}
-
 	trans.nodeMutex.Lock()
-	nodeAddr := trans.nodes[destination.NodeInstanceId]
-	if nodeAddr == "" {
+	serviceName := trans.services[destination.NodeInstanceId]
+	nodeName := trans.nodes[destination.NodeInstanceId]
+	if nodeName == "" {
 		cfgNode := trans.system.NodeConfig(destination.NodeInstanceId)
 		if cfgNode == nil {
 			trans.nodeMutex.Unlock()
 			return nil, goactor.ErrorWrapf(goactor.ErrNodeMiss, "node:%d", destination.NodeInstanceId)
 		}
-		var ok bool
-		nodeAddr, ok = cfgNode.Transports[trans.Name()]
+		nodeAddr, ok := cfgNode.Transports[trans.Name()]
 		if !ok {
 			trans.nodeMutex.Unlock()
-			return nil, goactor.ErrorWrapf(goactor.ErrTransportMiss, "trans:%d", trans.Name())
+			return nil, goactor.ErrorWrapf(goactor.ErrTransportMiss, "trans:%s", trans.Name())
 		}
-
-		trans.nodes[destination.NodeInstanceId] = nodeAddr
+		names := strings.Split(nodeAddr, ":")
+		serviceName = names[0]
+		nodeName = names[1]
+		trans.services[destination.NodeInstanceId] = names[0]
+		trans.nodes[destination.NodeInstanceId] = names[1]
 	}
 	trans.nodeMutex.Unlock()
 
@@ -143,7 +138,8 @@ func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionC
 		transSession = trans.session
 		msg.Headers.Put(
 			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, int(transSession)),
-			goactor.BuildHeaderString(goactor.HeaderIdTransAddress, trans.topic),
+			goactor.BuildHeaderString(goactor.HeaderIdTransAddress2, trans.service),
+			goactor.BuildHeaderString(goactor.HeaderIdTransAddress, trans.node),
 		)
 
 		trans.responses[transSession] = msg
@@ -155,14 +151,12 @@ func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionC
 		return nil, goactor.ErrorWrapf(pberr, "pb marshal error")
 	}
 
-	err := trans.nc.Publish(nodeAddr, buf)
-	if err != nil {
-		return nil, goactor.ErrorWrapf(err, "publish error %s", nodeAddr)
-	}
+	trans.sendMsg(serviceName, nodeName, buf)
+
 	if reqsession >= 0 {
 		return func() {
 			trans.responseMutex.Lock()
-			delete(trans.responses, int32(transSession))
+			delete(trans.responses, transSession)
 			trans.responseMutex.Unlock()
 		}, nil
 	}

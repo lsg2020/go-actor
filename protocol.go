@@ -81,6 +81,10 @@ func (msg *DispatchMessage) FromPB(pb *message.Message) {
 		case HeaderBytes:
 			msg.Headers.Put(BuildHeaderBytes(int(header.Id), header.ValBytes))
 		case HeaderInterface:
+		case HeaderUint64:
+			msg.Headers.Put(BuildHeaderUint64(int(header.Id), header.ValUint64))
+		case HeaderInt64:
+			msg.Headers.Put(BuildHeaderInt64(int(header.Id), header.ValInt64))
 		}
 	}
 
@@ -131,6 +135,18 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 				ValBytes: header.ValBytes,
 			})
 		case HeaderInterface:
+		case HeaderUint64:
+			pb.Headers = append(pb.Headers, &message.Header{
+				Id:        int32(header.Id),
+				Type:      int32(header.Type),
+				ValUint64: header.ValUint64,
+			})
+		case HeaderInt64:
+			pb.Headers = append(pb.Headers, &message.Header{
+				Id:       int32(header.Id),
+				Type:     int32(header.Type),
+				ValInt64: header.ValInt64,
+			})
 		}
 	}
 	if msg.Content != nil {

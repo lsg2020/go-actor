@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"sync"
+	"regexp"
+	"strconv"
 
-	etcd "go.etcd.io/etcd/client/v3"
+	etcd "github.com/coreos/etcd/clientv3"
+	"go.uber.org/zap"
 )
 
 // Selector 根据名字获取Actor地址
 type Selector interface {
 	Addr() *ActorAddr
+	Addrs() []*ActorAddr
 	Close()
 }
 
@@ -39,10 +42,7 @@ func NewLoopSelector(system *ActorSystem, name string) (Selector, error) {
 // 查询并监听etcd的actor名字注册
 func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 	preFixName := fmt.Sprintf("/%s/%s/names/%s/", system.options.etcdPrefix, system.options.name, name)
-	rsp, err := system.etcdClient.Get(system.Context(), preFixName, etcd.WithPrefix())
-	if err != nil {
-		return nil, err
-	}
+
 	ctx, cancel := context.WithCancel(system.Context())
 	selector := &etcdSelector{
 		cancel: cancel,
@@ -52,44 +52,45 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 		addr := &ActorAddr{}
 		err := json.Unmarshal(val, addr)
 		if err != nil {
-			system.Logger().Errorf("select unmarshal error path:%s val:%s", preFixName, string(val))
+			system.Logger().Error("select unmarshal error", zap.String("path", preFixName), zap.String("value", string(val)))
 			return
 		}
-		selector.addrMutex.Lock()
-		defer selector.addrMutex.Unlock()
 		selector.addrList = append(selector.addrList, addr)
 	}
 
-	delAddr := func(val []byte) {
-		addr := &ActorAddr{}
-		err := json.Unmarshal(val, addr)
-		if err != nil {
-			system.Logger().Errorf("select unmarshal error path:%s val:%s", preFixName, string(val))
-			return
-		}
-		selector.addrMutex.Lock()
-		defer selector.addrMutex.Unlock()
+	delAddr := func(instanceId uint64, handle ActorHandle) {
+		list := make([]*ActorAddr, 0, len(selector.addrList))
 		for i := 0; i < len(selector.addrList); i++ {
-			if selector.addrList[i].Handle == addr.Handle {
-				selector.addrList[i] = selector.addrList[len(selector.addrList)-1]
-				selector.addrList = selector.addrList[:len(selector.addrList)-1]
-				i--
+			if selector.addrList[i].NodeInstanceId == instanceId && selector.addrList[i].Handle == handle {
+				continue
 			}
+			list = append(list, selector.addrList[i])
 		}
-	}
 
-	for _, v := range rsp.Kvs {
-		addAddr(v.Value)
+		selector.addrList = list
 	}
 
 	go func() {
 		watcher := system.etcdClient.Watch(ctx, preFixName, etcd.WithPrefix())
+		compileRegex := regexp.MustCompile(`/(\w*)/(\w*)`)
+
+		rsp, _ := system.etcdClient.Get(system.Context(), preFixName, etcd.WithPrefix())
+		for _, v := range rsp.Kvs {
+			addAddr(v.Value)
+		}
+
 		for r := range watcher {
 			for _, event := range r.Events {
 				if event.Type == etcd.EventTypePut {
 					addAddr(event.Kv.Value)
 				} else if event.Type == etcd.EventTypeDelete {
-					delAddr(event.Kv.Value)
+					path := string(event.Kv.Key)[len(preFixName):]
+					paths := compileRegex.FindStringSubmatch(path)
+					if len(paths) == 3 {
+						instanceId, _ := strconv.ParseUint(paths[1], 10, 64)
+						handle, _ := strconv.ParseUint(paths[2], 10, 64)
+						delAddr(instanceId, ActorHandle(handle))
+					}
 				}
 			}
 		}
@@ -99,18 +100,19 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 }
 
 type etcdSelector struct {
-	addrMutex sync.Mutex
-	addrList  []*ActorAddr
-	cancel    context.CancelFunc
+	addrList []*ActorAddr
+	cancel   context.CancelFunc
 }
 
 func (selector *etcdSelector) Addr() *ActorAddr {
-	selector.addrMutex.Lock()
-	defer selector.addrMutex.Unlock()
 	if len(selector.addrList) <= 0 {
 		return nil
 	}
 	return selector.addrList[rand.Int()%len(selector.addrList)]
+}
+
+func (selector *etcdSelector) Addrs() []*ActorAddr {
+	return selector.addrList
 }
 
 func (selector *etcdSelector) Close() {
@@ -124,14 +126,16 @@ type loopSelector struct {
 }
 
 func (selector *loopSelector) Addr() *ActorAddr {
-	selector.etcd.addrMutex.Lock()
-	defer selector.etcd.addrMutex.Unlock()
 	if len(selector.etcd.addrList) <= 0 {
 		return nil
 	}
 	index := selector.index
 	selector.index++
 	return selector.etcd.addrList[index%(len(selector.etcd.addrList))]
+}
+
+func (selector *loopSelector) Addrs() []*ActorAddr {
+	return selector.Addrs()
 }
 
 func (selector *loopSelector) Close() {

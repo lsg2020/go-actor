@@ -21,6 +21,8 @@ message Header {
     string val_string = 4;
     ActorAddr val_addr = 5;
     bytes val_bytes = 6;
+    uint64 val_uint64 = 7;
+    int64 val_int64 = 8;
 }
 
 message Message {

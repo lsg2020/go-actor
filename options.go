@@ -1,16 +1,22 @@
 package goactor
 
-import "context"
+import (
+	"context"
+
+	etcd "github.com/coreos/etcd/clientv3"
+	"go.uber.org/zap"
+)
 
 type ActorSystemOption func(ops *actorSystemOptions)
 
 type actorSystemOptions struct {
 	instanceID uint64
 	name       string
+	etcdClient *etcd.Client
 	etcd       []string
 	etcdPrefix string
 	transports []Transport
-	logger     Logger
+	logger     *zap.Logger
 	ctx        context.Context
 }
 
@@ -19,10 +25,10 @@ func (options *actorSystemOptions) init() (*actorSystemOptions, error) {
 		options = &actorSystemOptions{}
 	}
 	if options.name == "" {
-		return options, Errorf("actor system name not set")
+		return options, ErrInitNeedName
 	}
 	if options.instanceID == 0 {
-		return options, Errorf("actor system instance id not set")
+		return options, ErrInitNeedInstanceId
 	}
 
 	if options.etcd == nil {
@@ -47,6 +53,12 @@ func WithTransport(transport Transport) ActorSystemOption {
 	}
 }
 
+func WithEtcdClient(client *etcd.Client) ActorSystemOption {
+	return func(options *actorSystemOptions) {
+		options.etcdClient = client
+	}
+}
+
 func WithEtcd(addr ...string) ActorSystemOption {
 	return func(options *actorSystemOptions) {
 		options.etcd = append(options.etcd, addr...)
@@ -65,7 +77,7 @@ func WithInstanceId(id uint64) ActorSystemOption {
 	}
 }
 
-func WithLogger(logger Logger) ActorSystemOption {
+func WithLogger(logger *zap.Logger) ActorSystemOption {
 	return func(options *actorSystemOptions) {
 		options.logger = logger
 	}
@@ -74,5 +86,49 @@ func WithLogger(logger Logger) ActorSystemOption {
 func WithContext(ctx context.Context) ActorSystemOption {
 	return func(options *actorSystemOptions) {
 		options.ctx = ctx
+	}
+}
+
+type actorOptions struct {
+	logger *zap.Logger
+	protos []Proto
+	initcb func()
+	ctx    context.Context
+}
+
+func (ops *actorOptions) init() {
+	if ops.logger == nil {
+		ops.logger = DefaultLogger()
+	}
+	if ops.ctx == nil {
+		ops.ctx = context.Background()
+	}
+
+}
+
+// ActorOption actor的创建参数
+type ActorOption func(ops *actorOptions)
+
+func ActorWithLogger(logger *zap.Logger) ActorOption {
+	return func(ops *actorOptions) {
+		ops.logger = logger
+	}
+}
+
+func ActorWithProto(proto Proto) ActorOption {
+	return func(ops *actorOptions) {
+		ops.protos = append(ops.protos, proto)
+	}
+}
+
+func ActorWithInitCB(cb func()) ActorOption {
+	return func(ops *actorOptions) {
+		ops.initcb = cb
+	}
+}
+
+func ActorWithContext(ctx context.Context) ActorOption {
+	return func(ops *actorOptions) {
+		ops.ctx = ctx
 	}
 }

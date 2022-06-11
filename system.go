@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
-	etcd "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/concurrency"
+	etcd "github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/concurrency"
+	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // ActorSystem actor的管理器,及提供对外访问同system下的actor的机制
@@ -45,7 +48,7 @@ func NewActorSystem(opts ...ActorSystemOption) (*ActorSystem, error) {
 		return nil, err
 	}
 
-	system.Logger().Infof("actor system start %s:%d\n", system.options.name, system.instanceID)
+	system.Logger().Info("actor system start")
 	return system, nil
 }
 
@@ -56,6 +59,7 @@ func (system *ActorSystem) init() error {
 		return err
 	}
 	system.instanceID = system.options.instanceID
+	system.options.logger = system.options.logger.With(zap.Uint64("actor_system_node_id", system.instanceID), zap.String("actor_system_name", system.options.name))
 	system.handle.handleInit()
 
 	system.context, system.cancel = context.WithCancel(system.options.ctx)
@@ -98,15 +102,21 @@ func (system *ActorSystem) NodeConfig(instanceId uint64) *ActorNodeConfig {
 
 // 注册并监听其他节点地址信息
 func (system *ActorSystem) initEtcd() error {
-	etcdClient, err := etcd.New(etcd.Config{
-		Endpoints:   system.options.etcd,
-		DialTimeout: time.Second * 5,
-	})
-	if err != nil {
-		return ErrorWrap(err)
+	if system.options.etcdClient == nil {
+		etcdClient, err := etcd.New(etcd.Config{
+			Endpoints:   system.options.etcd,
+			DialTimeout: time.Second * 5,
+		})
+		if err != nil {
+			return errors.Wrapf(err, "etcds:%v", system.options.etcd)
+		}
+		system.etcdClient = etcdClient
+	} else {
+		system.etcdClient = system.options.etcdClient
 	}
-	system.etcdClient = etcdClient
 
+	var err error
+	etcdClient := system.etcdClient
 	ctx, cancel := context.WithCancel(etcdClient.Ctx())
 	connected := false
 	time.AfterFunc(time.Second*5, func() {
@@ -116,7 +126,7 @@ func (system *ActorSystem) initEtcd() error {
 	})
 	system.etcdSession, err = concurrency.NewSession(etcdClient, concurrency.WithTTL(15), concurrency.WithContext(ctx))
 	if err != nil {
-		return Errorf("etcd connect failed %s", system.options.etcd)
+		return errors.Wrapf(err, "etcd connect failed:%v", system.options.etcd)
 	}
 	connected = true
 
@@ -131,13 +141,13 @@ func (system *ActorSystem) initEtcd() error {
 			transports,
 		})
 		if err != nil {
-			return ErrorWrap(err)
+			return errors.Wrapf(err, "register etcd")
 		}
 
 		key := fmt.Sprintf("/%s/%s/nodes/%d", system.options.etcdPrefix, system.options.name, system.instanceID)
 		_, err = etcdClient.Put(system.Context(), key, string(v), etcd.WithLease(system.etcdSession.Lease()))
 		if err != nil {
-			return ErrorWrap(err)
+			return errors.Wrapf(err, "register etcd key:%s", key)
 		}
 	}
 
@@ -154,18 +164,12 @@ func (system *ActorSystem) initEtcd() error {
 		system.nodes = append(system.nodes, config)
 	}
 
-	delnode := func(k, v []byte) {
+	delnode := func(nodeInstanceId uint64) {
 		system.nodeMutex.Lock()
 		defer system.nodeMutex.Unlock()
 
-		config := &ActorNodeConfig{}
-		err := json.Unmarshal(v, config)
-		if err != nil {
-			return
-		}
-
 		for index, node := range system.nodes {
-			if node.InstanceID == config.InstanceID {
+			if node.InstanceID == nodeInstanceId {
 				system.nodes[index] = system.nodes[len(system.nodes)-1]
 				system.nodes = system.nodes[:len(system.nodes)-1]
 				break
@@ -175,19 +179,24 @@ func (system *ActorSystem) initEtcd() error {
 
 	go func() {
 		key := fmt.Sprintf("/%s/%s/nodes", system.options.etcdPrefix, system.options.name)
+
+		watcher := etcdClient.Watch(system.Context(), key, etcd.WithPrefix())
 		resp, _ := etcdClient.Get(system.Context(), key, etcd.WithPrefix())
 		for _, kv := range resp.Kvs {
 			addnode(kv.Key, kv.Value)
 		}
 
-		watcher := etcdClient.Watch(system.Context(), key, etcd.WithPrefix())
 		for rsp := range watcher {
 			for _, ev := range rsp.Events {
 				if ev.Type == etcd.EventTypePut {
 					addnode(ev.Kv.Key, ev.Kv.Value)
 				}
 				if ev.Type == etcd.EventTypeDelete {
-					delnode(ev.Kv.Key, ev.Kv.Value)
+					instanceStr := string(ev.Kv.Key)[len(key)+1:]
+					instanceId, err := strconv.ParseUint(instanceStr, 10, 64)
+					if err == nil {
+						delnode(instanceId)
+					}
 				}
 			}
 		}
@@ -216,10 +225,10 @@ func (system *ActorSystem) Register(a Actor, names ...string) *ActorAddr {
 	for _, name := range names {
 		err := system.BindName(name, addr)
 		if err != nil {
-			system.Logger().Errorf("register actor name error:%#v", err.Error())
+			a.Logger().Error("register actor name error", zap.String("system_name", system.options.name), zap.String("actor_name", name), zap.Error(err))
 		}
 	}
-	system.Logger().Infof("%s:%d actor register %#v\n", system.options.name, system.instanceID, addr)
+	system.Logger().Info("actor register", zap.Uint32("actor_handle", uint32(addr.Handle)))
 	return addr
 }
 
@@ -236,12 +245,12 @@ func (system *ActorSystem) UnRegister(a Actor) {
 		system.UnbindName(name, handle)
 	}
 
-	system.Logger().Infof("%s:%d actor unregister %v %v\n", system.options.name, system.instanceID, ret, handle)
+	system.Logger().Info("actor unregister", zap.Uint32("actor_handle", uint32(handle)), zap.Bool("ret", ret))
 }
 
 // BindName 给Actor一个服务名
 func (system *ActorSystem) BindName(name string, addr *ActorAddr) error {
-	key := fmt.Sprintf("/%s/%s/names/%s/%d", system.options.etcdPrefix, system.options.name, name, addr.Handle)
+	key := fmt.Sprintf("/%s/%s/names/%s/%d/%d", system.options.etcdPrefix, system.options.name, name, addr.NodeInstanceId, addr.Handle)
 	v, err := json.Marshal(addr)
 	if err != nil {
 		return err
@@ -274,7 +283,7 @@ func (system *ActorSystem) UnbindName(name string, handle ActorHandle) {
 	}
 	system.namesMutex.Unlock()
 
-	key := fmt.Sprintf("/%s/%s/names/%s/%d", system.options.etcdPrefix, system.options.name, name, handle)
+	key := fmt.Sprintf("/%s/%s/names/%s/%d/%d", system.options.etcdPrefix, system.options.name, name, system.options.instanceID, handle)
 	_, _ = system.etcdClient.Delete(system.Context(), key)
 }
 
@@ -322,7 +331,7 @@ func (system *ActorSystem) transport(destination *ActorAddr, msg *DispatchMessag
 	return nil, err
 }
 
-func (system *ActorSystem) Logger() Logger {
+func (system *ActorSystem) Logger() *zap.Logger {
 	return system.options.logger
 }
 

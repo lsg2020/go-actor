@@ -15,6 +15,7 @@ var (
 var (
 	protoPackage  = protogen.GoImportPath("github.com/golang/protobuf/proto")
 	gactorPackage = protogen.GoImportPath("github.com/lsg2020/go-actor")
+	zapPackage    = protogen.GoImportPath("go.uber.org/zap")
 )
 
 func GenerateFile(gen *protogen.Plugin, file *protogen.File) (*protogen.GeneratedFile, error) {
@@ -122,7 +123,7 @@ func genServer(g *protogen.GeneratedFile, srv *protogen.Service) {
 		if methodTypeRaw(methodType(method)) {
 			g.P("err := s.s.On", method.GoName, "(ctx, args[0].(*", genMessageName(method.Input), "))")
 			g.P("if err != nil {")
-			g.P("ctx.System.Logger().Errorf(\"message process error:%#v\", err.Error())")
+			g.P("ctx.System.Logger().Error(\"message process error\", ", zapPackage.Ident("Error"), "(err))")
 			g.P("}")
 			g.P("return err")
 		} else {

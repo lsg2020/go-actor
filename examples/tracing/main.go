@@ -151,7 +151,7 @@ func main() {
 		spanCarrier := msg.Headers.GetBytes(goactor.HeaderIdTracingSpanCarrier)
 		spanContext, err := tracer.Extract(opentracing.Binary, bytes.NewBuffer(spanCarrier))
 		if err != nil {
-			return goactor.ErrorWrap(err)
+			return goactor.ErrorWrapf(err, "tracer extract err")
 		}
 		span := tracer.StartSpan("operation", opentracing.ChildOf(spanContext))
 		defer span.Finish()

@@ -1,46 +1,13 @@
 package goactor
 
-import (
-	"fmt"
-	"log"
-)
+import "go.uber.org/zap"
 
-type Logger interface {
-	Debugf(template string, args ...interface{})
-	Infof(template string, args ...interface{})
-	Warnf(template string, args ...interface{})
-	Errorf(template string, args ...interface{})
-}
-
-type defaultLog struct {
-	logger *log.Logger
-}
-
-var defaultLogger *defaultLog
+var defaultLogger *zap.Logger
 
 func init() {
-	defaultLogger = &defaultLog{
-		logger: log.Default(),
-	}
+	defaultLogger, _ = zap.NewDevelopment()
 }
 
-func DefaultLogger() Logger {
+func DefaultLogger() *zap.Logger {
 	return defaultLogger
-}
-
-func (logger *defaultLog) Debugf(template string, args ...interface{}) {
-	str := fmt.Sprintf("[Debug] "+template, args...)
-	_ = logger.logger.Output(2, str)
-}
-func (logger *defaultLog) Infof(template string, args ...interface{}) {
-	str := fmt.Sprintf("[Info] "+template, args...)
-	_ = logger.logger.Output(2, str)
-}
-func (logger *defaultLog) Warnf(template string, args ...interface{}) {
-	str := fmt.Sprintf("[Warn] "+template, args...)
-	_ = logger.logger.Output(2, str)
-}
-func (logger *defaultLog) Errorf(template string, args ...interface{}) {
-	str := fmt.Sprintf("[Error] "+template, args...)
-	_ = logger.logger.Output(2, str)
 }
