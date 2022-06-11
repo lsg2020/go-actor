@@ -72,7 +72,7 @@ func newEtcdSelector(system *ActorSystem, name string) (*etcdSelector, error) {
 
 	go func() {
 		watcher := system.etcdClient.Watch(ctx, preFixName, etcd.WithPrefix())
-		compileRegex := regexp.MustCompile(`/(\w*)/(\w*)`)
+		compileRegex := regexp.MustCompile(`(\w*)/(\w*)`)
 
 		rsp, _ := system.etcdClient.Get(system.Context(), preFixName, etcd.WithPrefix())
 		for _, v := range rsp.Kvs {

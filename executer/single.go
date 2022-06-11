@@ -40,12 +40,16 @@ type SingleGoroutine struct {
 
 func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	finish := false
+	var currentActor goactor.Actor
 	defer func() {
 		if finish {
 			return
 		}
 		go executer.work(nil, workId)
 		if r := recover(); r != nil {
+			if currentActor != nil && currentActor.GetState() != goactor.ActorStateStop {
+				currentActor.Logger().Error("actor executer error", zap.Any("recover", r))
+			}
 		}
 	}()
 
@@ -84,7 +88,9 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 
 			cb := msg.Actor.Callback()
 			if cb != nil {
+				currentActor = msg.Actor
 				cb(msg)
+				currentActor = nil
 			} else {
 				logger := goactor.DefaultLogger()
 				if msg.Actor != nil {

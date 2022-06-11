@@ -178,7 +178,7 @@ func (system *ActorSystem) initEtcd() error {
 	}
 
 	go func() {
-		key := fmt.Sprintf("/%s/%s/nodes", system.options.etcdPrefix, system.options.name)
+		key := fmt.Sprintf("/%s/%s/nodes/", system.options.etcdPrefix, system.options.name)
 
 		watcher := etcdClient.Watch(system.Context(), key, etcd.WithPrefix())
 		resp, _ := etcdClient.Get(system.Context(), key, etcd.WithPrefix())
@@ -192,7 +192,7 @@ func (system *ActorSystem) initEtcd() error {
 					addnode(ev.Kv.Key, ev.Kv.Value)
 				}
 				if ev.Type == etcd.EventTypeDelete {
-					instanceStr := string(ev.Kv.Key)[len(key)+1:]
+					instanceStr := string(ev.Kv.Key)[len(key):]
 					instanceId, err := strconv.ParseUint(instanceStr, 10, 64)
 					if err == nil {
 						delnode(instanceId)
