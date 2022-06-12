@@ -159,7 +159,20 @@ func (a *actorImpl) GetProto(id int) Proto {
 	return nil
 }
 
-func (a *actorImpl) preWait(session int, asyncCB func(msg *DispatchMessage)) SessionCancel {
+func (a *actorImpl) preWait(session int, cb func(msg *DispatchMessage)) SessionCancel {
+	asyncCB := cb
+	if cb != nil {
+		asyncCB = func(msg *DispatchMessage) {
+			defer func() {
+				if r := recover(); r != nil {
+					if a.GetState() != ActorStateStop {
+						a.Logger().Error("actor message error", zap.Any("recover", r))
+					}
+				}
+			}()
+			cb(msg)
+		}
+	}
 	cancel := a.executer.PreWait(session, asyncCB)
 	a.actorMutex.Lock()
 	a.waitSessions[session] = struct{}{}
@@ -265,10 +278,6 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 }
 
 func (a *actorImpl) Dispatch(system *ActorSystem, msg *DispatchMessage) {
-	if a.GetState() == ActorStateStop {
-		return
-	}
-
 	msg.System = system
 	msg.Actor = a
 
@@ -343,16 +352,23 @@ func (a *actorImpl) onKill() {
 	a.Instance().OnRelease(a)
 }
 
-func (a *actorImpl) dispatchSystemProto(args ...interface{}) {
+func (a *actorImpl) dispatchSystemProto(session int, args ...interface{}) {
 	data, _, _ := a.protoSystem.Pack(nil, args...)
 	var headers Headers
 	headers = headers.Put(
 		BuildHeaderInt(HeaderIdProtocol, a.protoSystem.Id()),
 	)
+	response := a.response
+	if session != 0 {
+		headers = headers.Put(BuildHeaderInt(HeaderIdSession, session))
+	} else {
+		response = nil
+	}
 
 	msg := &DispatchMessage{
-		Headers: HeadersWrap{headers},
-		Content: data,
+		Headers:          HeadersWrap{headers},
+		Content:          data,
+		DispatchResponse: response,
 	}
 
 	systemHandler := func(msg *DispatchMessage, args ...interface{}) error {
@@ -369,7 +385,7 @@ func (a *actorImpl) dispatchSystemProto(args ...interface{}) {
 }
 
 func (a *actorImpl) Kill() {
-	a.dispatchSystemProto("kill")
+	a.dispatchSystemProto(0, "kill")
 }
 
 func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
@@ -377,13 +393,13 @@ func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, erro
 	cancel := a.preWait(session, nil)
 	defer cancel()
 
-	a.dispatchSystemProto("exec", session, f)
+	a.dispatchSystemProto(session, "exec", f)
 	r, err := a.wait(ctx, session)
 	return r, err
 }
 
 func (a *actorImpl) Fork(f ForkCallback) {
-	a.dispatchSystemProto("fork", f)
+	a.dispatchSystemProto(0, "fork", f)
 }
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
@@ -447,9 +463,23 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 	}
 
 	a.cb = func(msg *DispatchMessage) {
+		defer func() {
+			if r := recover(); r != nil {
+				if a.GetState() != ActorStateStop {
+					msg.MaybeResponseErr(ErrMessageErr)
+					a.Logger().Error("actor message error", zap.Any("recover", r))
+				}
+			}
+			if msg.DispatchResponse != nil && msg.Headers.GetInt(HeaderIdSession) != 0 {
+				a.Logger().Error("maybe forget response")
+				msg.Response(ErrForgetResponse, nil)
+			}
+		}()
+
 		protocol := msg.Headers.GetInt(HeaderIdProtocol)
 		p := a.GetProto(protocol)
 		if p == nil {
+			msg.MaybeResponseErr(ErrProtocolNotExists)
 			a.Logger().Error("actor message protocol not exists", zap.Int("protocol", protocol))
 			return
 		}
@@ -464,6 +494,6 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 	a.ops.protos = append(a.ops.protos, a.protoSystem)
 
 	// init message
-	a.dispatchSystemProto("init")
+	a.dispatchSystemProto(0, "init")
 	return a
 }

@@ -25,21 +25,34 @@ type DispatchMessage struct {
 
 // Response 回复通知消息的接口
 func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
+	if msg.DispatchResponse == nil {
+		return
+	}
 	if err != nil && msg.RequestProto != nil {
 		_ = msg.RequestProto.InterceptorError()(msg, nil, err)
 	}
 
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
+		msg.DispatchResponse = nil
 		return
 	}
 	requestProtoPackCtx := msg.Headers.GetInterface(HeaderIdRequestProtoPackCtx)
 	rsp, _, err := msg.RequestProto.Pack(requestProtoPackCtx, datas...)
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
+		msg.DispatchResponse = nil
 		return
 	}
 	msg.DispatchResponse(msg, nil, rsp)
+	msg.DispatchResponse = nil
+}
+
+func (msg *DispatchMessage) MaybeResponseErr(err error) {
+	if msg.Headers.GetInt(HeaderIdSession) == 0 {
+		return
+	}
+	msg.Response(err, nil)
 }
 
 func (msg *DispatchMessage) Extract(headerIds ...int) Headers {

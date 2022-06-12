@@ -133,7 +133,7 @@ func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCa
 	trans.nodeMutex.Unlock()
 
 	transSession := int32(0)
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
@@ -149,7 +149,7 @@ func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCa
 	}
 	tcpConn.send(buf)
 
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		return func() {
 			trans.responseMutex.Lock()
 			delete(trans.responses, transSession)
@@ -209,8 +209,17 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 				trans.system.Logger().Error("dispatch response message not exists", zap.Int("session", dispatch.Headers.GetInt(goactor.HeaderIdTransSession)))
 			}
 		} else {
+			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			if session == 0 {
+				dispatch.DispatchResponse = nil
+			}
+
 			err := trans.system.Dispatch(dispatch)
 			if err != nil {
+				if session != 0 {
+					dispatch.Response(err, nil)
+				}
+
 				trans.system.Logger().Error("dispatch message error", zap.Error(err))
 			}
 		}

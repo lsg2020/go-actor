@@ -40,19 +40,6 @@ type SingleGoroutine struct {
 
 func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	finish := false
-	var currentActor goactor.Actor
-	defer func() {
-		if finish {
-			return
-		}
-		go executer.work(nil, workId)
-		if r := recover(); r != nil {
-			if currentActor != nil && currentActor.GetState() != goactor.ActorStateStop {
-				currentActor.Logger().Error("actor executer error", zap.Any("recover", r))
-			}
-		}
-	}()
-
 	if initWg != nil {
 		executer.cond.L.Lock()
 		initWg.Done()
@@ -78,26 +65,24 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 					}
 				} else {
 					logger := goactor.DefaultLogger()
-					if msg.Actor != nil {
-						logger = msg.Actor.Logger()
-					}
 					logger.Warn("dispatch response miss", zap.Int("session", session))
 				}
 				continue
 			}
 
 			cb := msg.Actor.Callback()
-			if cb != nil {
-				currentActor = msg.Actor
-				cb(msg)
-				currentActor = nil
-			} else {
+			if cb == nil {
+				msg.MaybeResponseErr(goactor.ErrActorMiss)
+
 				logger := goactor.DefaultLogger()
 				if msg.Actor != nil {
 					logger = msg.Actor.Logger()
 				}
-				logger.Error("actor message callback not set")
+				logger.Error("actor state stop")
+				continue
 			}
+
+			cb(msg)
 		case <-executer.context.Done():
 			finish = true
 			break

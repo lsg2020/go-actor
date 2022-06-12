@@ -18,6 +18,9 @@ const (
 	ErrCodeTransportMiss     = 8
 	ErrCodeResponseMiss      = 9
 	ErrCodeNodeMiss          = 10
+	ErrCodeActorStop         = 11
+	ErrCodeForgetResponse    = 12
+	ErrCodeMessageErr        = 13
 )
 
 var (
@@ -33,6 +36,9 @@ var (
 	ErrPackErr            = Error(ErrCodePackErr, "pack err")
 	ErrCmdNotExists       = Error(ErrCodeCmdNotExists, "cmd not exists")
 	ErrNodeMiss           = Error(ErrCodeNodeMiss, "node miss")
+	ErrActorStop          = Error(ErrCodeActorStop, "actor stop")
+	ErrForgetResponse     = Error(ErrCodeForgetResponse, "forget response")
+	ErrMessageErr         = Error(ErrCodeMessageErr, "message error")
 )
 
 type ActorError struct {

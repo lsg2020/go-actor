@@ -20,7 +20,8 @@ func NewProtoSystem() *ProtoSystem {
 						if msg.Actor != nil {
 							logger = msg.Actor.Logger()
 						}
-						logger.Error("system recover", zap.String("cmd", msg.Headers.GetStr(HeaderIdMethod)), zap.Any("args", args))
+						logger.Error("system recover", zap.String("cmd", msg.Headers.GetStr(HeaderIdMethod)))
+						panic(r)
 					}
 				}()
 				return handler(msg, args...)
@@ -97,30 +98,12 @@ func (p *ProtoSystem) onKill(msg *DispatchMessage, _ ...interface{}) error {
 }
 
 func (p *ProtoSystem) onExec(msg *DispatchMessage, args ...interface{}) error {
-	/*
-		f := reflect.ValueOf(args[1])
-		rParams := make([]reflect.Value, len(args[2].([]interface{})))
-		for i, p := range args[2].([]interface{}) {
-			rParams[i] = reflect.ValueOf(p)
-		}
-		r := f.Call(rParams)
-	*/
-
-	session := args[0].(int)
-	r, err := args[1].(ExecCallback)()
-	msg.Actor.GetExecuter().OnResponse(session, err, r)
+	r, err := args[0].(ExecCallback)()
+	msg.Response(err, r)
 	return nil
 }
 
 func (p *ProtoSystem) onFork(_ *DispatchMessage, args ...interface{}) error {
-	/*
-		f := reflect.ValueOf(args[0])
-		rParams := make([]reflect.Value, len(args[1].([]interface{})))
-		for i, p := range args[1].([]interface{}) {
-			rParams[i] = reflect.ValueOf(p)
-		}
-		f.Call(rParams)
-	*/
 	args[0].(ForkCallback)()
 	return nil
 }

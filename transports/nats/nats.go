@@ -100,8 +100,17 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
 		} else {
+			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			if session == 0 {
+				dispatch.DispatchResponse = nil
+			}
+
 			err := trans.system.Dispatch(dispatch)
 			if err != nil {
+				if session != 0 {
+					dispatch.Response(err, nil)
+				}
+
 				system.Logger().Error("dispatch message error", zap.Error(err))
 			}
 		}
@@ -137,7 +146,7 @@ func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionC
 
 	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
 	transSession := int32(0)
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
@@ -159,7 +168,7 @@ func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionC
 	if err != nil {
 		return nil, goactor.ErrorWrapf(err, "publish error %s", nodeAddr)
 	}
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		return func() {
 			trans.responseMutex.Lock()
 			delete(trans.responses, int32(transSession))

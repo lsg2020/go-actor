@@ -7,6 +7,7 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	"github.com/lsg2020/go-actor/executer"
+	"go.uber.org/zap"
 )
 
 type Actor struct {
@@ -29,6 +30,13 @@ func (a *Actor) OnInit(actor goactor.Actor) {
 		}
 	})
 
+	execRet, execErr := actor.Exec(actor.Context(), func() (interface{}, error) {
+		panic("test err")
+		return nil, nil
+	})
+	_ = execRet
+	actor.Logger().Info("exec response", zap.Error(execErr))
+
 	actor.Logger().Info(fmt.Sprintf("actor init %#v", a))
 }
 
@@ -40,7 +48,7 @@ func main() {
 	single := &executer.SingleGoroutine{}
 	single.Start(context.Background(), 1)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		goactor.NewActor(&Actor{
 			Id: i,
 		}, single)

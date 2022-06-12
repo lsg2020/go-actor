@@ -95,8 +95,16 @@ func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
 		} else {
+			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			if session == 0 {
+				dispatch.DispatchResponse = nil
+			}
+
 			err = trans.system.Dispatch(dispatch)
 			if err != nil {
+				if session != 0 {
+					dispatch.Response(err, nil)
+				}
 				trans.system.Logger().Error("dispatch message error", zap.Error(err))
 			}
 		}
@@ -132,7 +140,7 @@ func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCan
 
 	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
 	transSession := int32(0)
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		trans.responseMutex.Lock()
 		trans.session++
 		transSession = trans.session
@@ -156,7 +164,7 @@ func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCan
 		return nil, goactor.ErrorWrapf(err, "service:%s node:%s", serviceName, nodeName)
 	}
 
-	if reqsession >= 0 {
+	if reqsession != 0 {
 		return func() {
 			trans.responseMutex.Lock()
 			delete(trans.responses, transSession)
