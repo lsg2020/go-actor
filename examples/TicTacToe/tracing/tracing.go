@@ -11,7 +11,7 @@ func InterceptorCall() goactor.ProtoOption {
 	tracer := opentracing.GlobalTracer()
 	return goactor.ProtoWithInterceptorCall(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
 		method := msg.Headers.GetStr(goactor.HeaderIdMethod)
-		span := msg.Headers.GetInterface(goactor.HeaderIdTracingSpan)
+		span := opentracing.SpanFromContext(msg.Context())
 		var spanContext opentracing.Span
 		if span == nil {
 			spanContext = tracer.StartSpan(method)
@@ -38,7 +38,9 @@ func InterceptorDispatch() goactor.ProtoOption {
 		}
 		span := tracer.StartSpan("operation", opentracing.ChildOf(spanContext))
 		defer span.Finish()
-		msg.Headers.Put(goactor.BuildHeaderInterfaceRaw(goactor.HeaderIdTracingSpan, span, true))
+
+		ctx := opentracing.ContextWithSpan(msg.Context(), span)
+		msg.SetContext(ctx)
 
 		return handler(msg, args...)
 	})

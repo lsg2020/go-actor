@@ -54,11 +54,11 @@ func (s *HelloService) OnTestCallAdd(ctx *goactor.DispatchMessage, req *hello.Re
 	a := ctx.Actor.Instance().(*HelloActor)
 	log.Printf("OnCallSourceAdd in actor:%#v req:%#v\n", a.addr, req.String())
 
-	rsp1, err1 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	rsp1, err1 := client.Add(ctx.Context(), system, a.actor, selector.Addr(), req, nil)
 	if err1 != nil {
 		return nil, err1
 	}
-	rsp2, err2 := client.Add(system.Context(), system, a.actor, selector.Addr(), req, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	rsp2, err2 := client.Add(ctx.Context(), system, a.actor, selector.Addr(), req, nil)
 	if err2 != nil {
 		return nil, err2
 	}

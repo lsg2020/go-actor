@@ -101,13 +101,13 @@ func (p *Player) OnSetName(ctx *goactor.DispatchMessage, req *message.PlayerSetN
 }
 
 func (p *Player) OnIndex(ctx *goactor.DispatchMessage, req *message.PlayerIndexRequest) (*message.PlayerIndexResponse, error) {
-	gameList, err := p.ManagerClient.GameList(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGameListRequest{}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	gameList, err := p.ManagerClient.GameList(ctx.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGameListRequest{}, nil)
 	if err != nil {
 		return nil, err
 	}
 	games := make([]*message.GameInfo, 0, len(p.gameAddrs))
 	for _, addr := range p.gameAddrs {
-		info, err := p.GameClient.Info(p.actor.Context(), p.System, p.actor, addr, &message.GameInfoRequest{Player: AddrToProto(p.actor.GetAddr(p.System))}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+		info, err := p.GameClient.Info(ctx.Context(), p.System, p.actor, addr, &message.GameInfoRequest{Player: AddrToProto(p.actor.GetAddr(p.System))}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -124,10 +124,10 @@ func (p *Player) OnCreateGame(ctx *goactor.DispatchMessage, req *message.PlayerC
 	if len(p.gameIds) > 5 {
 		return nil, fmt.Errorf("exists game")
 	}
-	_, err := p.ManagerClient.NewGame(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerNewGameRequest{
+	_, err := p.ManagerClient.NewGame(ctx.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerNewGameRequest{
 		Name:   p.Name,
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -150,9 +150,9 @@ func (p *Player) OnGetMoves(ctx *goactor.DispatchMessage, req *message.PlayerGet
 		return nil, fmt.Errorf("game %s not exists", req.GameId)
 	}
 
-	rsp, err := p.GameClient.GetMoves(p.actor.Context(), p.System, p.actor, addr, &message.GameGetMovesRequest{
+	rsp, err := p.GameClient.GetMoves(ctx.Context(), p.System, p.actor, addr, &message.GameGetMovesRequest{
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -165,11 +165,11 @@ func (p *Player) OnMakeMove(ctx *goactor.DispatchMessage, req *message.PlayerMak
 		return nil, fmt.Errorf("game %s not exists", req.GameId)
 	}
 
-	_, err := p.GameClient.MakeMove(p.actor.Context(), p.System, p.actor, addr, &message.GameMakeMoveRequest{
+	_, err := p.GameClient.MakeMove(ctx.Context(), p.System, p.actor, addr, &message.GameMakeMoveRequest{
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
 		X:      req.X,
 		Y:      req.Y,
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -177,15 +177,15 @@ func (p *Player) OnMakeMove(ctx *goactor.DispatchMessage, req *message.PlayerMak
 }
 
 func (p *Player) OnJoin(ctx *goactor.DispatchMessage, req *message.PlayerJoinRequest) (*message.PlayerJoinResponse, error) {
-	gameAddr, err := p.ManagerClient.GetGame(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGetGameRequest{
+	gameAddr, err := p.ManagerClient.GetGame(ctx.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGetGameRequest{
 		GameId: req.GameId,
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 	if err != nil || gameAddr.Game == nil {
 		return &message.PlayerJoinResponse{}, nil
 	}
-	p.GameClient.Join(p.actor.Context(), p.System, p.actor, ProtoToAddr(gameAddr.Game), &message.GameJoinRequest{
+	p.GameClient.Join(ctx.Context(), p.System, p.actor, ProtoToAddr(gameAddr.Game), &message.GameJoinRequest{
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 
 	return &message.PlayerJoinResponse{}, nil
 }

@@ -72,14 +72,15 @@ func (g *Game) join(player *goactor.ActorAddr, ctx *goactor.DispatchMessage) {
 		}
 	}
 
-	var ops *goactor.CallOptions
+	c := g.System.Context()
 	if ctx != nil {
-		ctx.ExtractEx(goactor.HeaderIdTracingSpan)
+		c = ctx.Context()
 	}
-	rsp, err := g.PlayerClient.OnJoinGame(g.actor.Context(), g.System, g.actor, player, &message.PlayerOnJoinGameRequest{
+
+	rsp, err := g.PlayerClient.OnJoinGame(c, g.System, g.actor, player, &message.PlayerOnJoinGameRequest{
 		GameId: g.gameId,
 		Addr:   AddrToProto(g.actor.GetAddr(g.System)),
-	}, ops)
+	}, nil)
 	if err != nil {
 		return
 	}
@@ -103,9 +104,9 @@ func (g *Game) leave(player *goactor.ActorAddr, ctx *goactor.DispatchMessage) {
 
 	g.actor.Logger().Info("game leave", zap.Any("handle", player.Handle))
 
-	_, err := g.PlayerClient.OnLeaveGame(g.actor.Context(), g.System, g.actor, player, &message.PlayerOnLeaveGameRequest{
+	_, err := g.PlayerClient.OnLeaveGame(ctx.Context(), g.System, g.actor, player, &message.PlayerOnLeaveGameRequest{
 		GameId: g.gameId,
-	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
+	}, nil)
 	if err != nil {
 		g.actor.Logger().Error("leave player error", zap.Error(err))
 	}

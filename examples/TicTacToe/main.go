@@ -59,7 +59,7 @@ func main() {
 		log.Panicln(err)
 	}
 
-	tracer, _, err := NewTracer("hello_2", "10.21.248.28:5775")
+	tracer, _, err := NewTracer("hello_3", "10.21.248.28:5775")
 	if err != nil {
 		panic(err)
 	}
