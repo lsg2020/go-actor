@@ -1,6 +1,8 @@
 package goactor
 
 import (
+	"context"
+
 	message "github.com/lsg2020/go-actor/pb"
 )
 
@@ -11,6 +13,7 @@ const (
 )
 
 func NewDispatchMessage(
+	ctx context.Context,
 	destination *ActorAddr,
 	protocol Proto,
 	protocolCtx interface{},
@@ -31,6 +34,7 @@ func NewDispatchMessage(
 		ProtocolId:       protocolId,
 		SessionId:        sessionId,
 		Destination:      destination,
+		ctx:              ctx,
 	}
 	if headers != nil {
 		msg.Headers = HeadersWrap{headers}
@@ -65,6 +69,7 @@ type DispatchMessage struct {
 	SessionId        int
 	ProtocolId       int
 	Destination      *ActorAddr
+	ctx              context.Context
 }
 
 func (msg *DispatchMessage) Init() {
@@ -77,6 +82,20 @@ func (msg *DispatchMessage) Init() {
 	if msg.Destination == nil {
 		msg.Destination = msg.Headers.GetAddr(HeaderIdDestination)
 	}
+}
+
+func (msg *DispatchMessage) Context() context.Context {
+	if msg.ctx != nil {
+		return msg.ctx
+	}
+	if msg.Actor != nil {
+		return msg.Actor.Context()
+	}
+	return context.TODO()
+}
+
+func (msg *DispatchMessage) SetContext(ctx context.Context) {
+	msg.ctx = ctx
 }
 
 func (msg *DispatchMessage) Session() int {
@@ -152,7 +171,6 @@ func (msg *DispatchMessage) FromPB(pb *message.Message) {
 			}))
 		case HeaderBytes:
 			msg.Headers.Put(BuildHeaderBytes(int(header.Id), header.ValBytes))
-		case HeaderInterface:
 		case HeaderUint64:
 			msg.Headers.Put(BuildHeaderUint64(int(header.Id), header.ValUint64))
 		case HeaderInt64:
@@ -175,9 +193,6 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 	}
 	for i := 0; i < len(msg.Headers.headers); i++ {
 		header := &msg.Headers.headers[i]
-		if header.Private {
-			continue
-		}
 		switch header.Type {
 		case HeaderInt:
 			pb.Headers = append(pb.Headers, &message.Header{
@@ -206,7 +221,6 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 				Type:     int32(header.Type),
 				ValBytes: header.ValBytes,
 			})
-		case HeaderInterface:
 		case HeaderUint64:
 			pb.Headers = append(pb.Headers, &message.Header{
 				Id:        int32(header.Id),

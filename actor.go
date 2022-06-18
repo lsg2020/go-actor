@@ -116,7 +116,7 @@ func (a *actorImpl) response(msg *DispatchMessage, err error, data interface{}) 
 	a.executer.OnResponse(msg.Session(), err, data)
 }
 
-func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, protocolCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
+func (a *actorImpl) buildSendPack(ctx context.Context, destination *ActorAddr, proto Proto, protocolCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
 	var header Headers
 	header = header.Put(
 		BuildHeaderInt(HeaderIdProtocol, proto.Id()),
@@ -136,7 +136,7 @@ func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, protocolC
 		response = nil
 	}
 
-	msg := NewDispatchMessage(destination, proto, protocolCtx, proto.Id(), session, header, data, nil, response)
+	msg := NewDispatchMessage(ctx, destination, proto, protocolCtx, proto.Id(), session, header, data, nil, response)
 	return msg
 }
 
@@ -202,7 +202,7 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 		return err
 	}
 
-	sendPack := a.buildSendPack(destination, proto, protocolCtx, 0, msg, options)
+	sendPack := a.buildSendPack(nil, destination, proto, protocolCtx, 0, msg, options)
 	sendHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelTrans, err := system.transport(destination, msg)
 		if err != nil {
@@ -234,7 +234,7 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 	session := a.executer.NewSession()
 
 	var rets interface{}
-	sendPack := a.buildSendPack(destination, proto, protocolCtx, session, msg, options)
+	sendPack := a.buildSendPack(ctx, destination, proto, protocolCtx, session, msg, options)
 	callHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelSession := a.preWait(session, nil)
 		defer cancelSession()
@@ -342,7 +342,7 @@ func (a *actorImpl) onKill() {
 	a.Instance().OnRelease(a)
 }
 
-func (a *actorImpl) dispatchAdminProto(session int, args ...interface{}) {
+func (a *actorImpl) dispatchAdminProto(ctx context.Context, session int, args ...interface{}) {
 	data, _, _ := a.protoAdmin.PackRequest(args...)
 	var headers Headers
 	headers = headers.Put(
@@ -355,7 +355,7 @@ func (a *actorImpl) dispatchAdminProto(session int, args ...interface{}) {
 		response = nil
 	}
 
-	msg := NewDispatchMessage(nil, a.protoAdmin, nil, a.protoAdmin.Id(), session, headers, data, nil, response)
+	msg := NewDispatchMessage(ctx, nil, a.protoAdmin, nil, a.protoAdmin.Id(), session, headers, data, nil, response)
 	systemHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		a.Dispatch(nil, msg)
 		return nil
@@ -370,7 +370,7 @@ func (a *actorImpl) dispatchAdminProto(session int, args ...interface{}) {
 }
 
 func (a *actorImpl) Kill() {
-	a.dispatchAdminProto(0, "kill")
+	a.dispatchAdminProto(nil, 0, "kill")
 }
 
 func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
@@ -378,13 +378,13 @@ func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, erro
 	cancel := a.preWait(session, nil)
 	defer cancel()
 
-	a.dispatchAdminProto(session, "exec", f)
+	a.dispatchAdminProto(ctx, session, "exec", f)
 	r, err := a.wait(ctx, session)
 	return r, err
 }
 
 func (a *actorImpl) Fork(f ForkCallback) {
-	a.dispatchAdminProto(0, "fork", f)
+	a.dispatchAdminProto(nil, 0, "fork", f)
 }
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
@@ -507,6 +507,6 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 	}
 
 	// init message
-	a.dispatchAdminProto(0, "init")
+	a.dispatchAdminProto(nil, 0, "init")
 	return a
 }

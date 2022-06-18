@@ -7,7 +7,6 @@ const (
 	HeaderString    HeaderValType = 2
 	HeaderBytes     HeaderValType = 3
 	HeaderActorAddr HeaderValType = 4
-	HeaderInterface HeaderValType = 5
 	HeaderUint64    HeaderValType = 6
 	HeaderInt64     HeaderValType = 7
 )
@@ -22,14 +21,12 @@ const (
 	HeaderIdTransSession       = 7
 	HeaderIdTransAddress       = 8
 	HeaderIdTransAddress2      = 9
-	HeaderIdTracingSpan        = 11
 	HeaderIdTracingSpanCarrier = 12
 )
 
 type Header struct {
 	Id           int
 	Type         HeaderValType
-	Private      bool
 	ValInt       int
 	ValStr       string
 	ValAddr      *ActorAddr
@@ -39,60 +36,28 @@ type Header struct {
 	ValInt64     int64
 }
 
-func BuildHeaderIntRaw(id int, val int, private bool) Header {
-	return Header{Id: id, Type: HeaderInt, ValInt: val, Private: private}
-}
-
 func BuildHeaderInt(id int, val int) Header {
-	return BuildHeaderIntRaw(id, val, false)
-}
-
-func BuildHeaderStringRaw(id int, val string, private bool) Header {
-	return Header{Id: id, Type: HeaderString, ValStr: val, Private: private}
+	return Header{Id: id, Type: HeaderInt, ValInt: val}
 }
 
 func BuildHeaderString(id int, val string) Header {
-	return BuildHeaderStringRaw(id, val, false)
-}
-
-func BuildHeaderBytesRaw(id int, val []byte, private bool) Header {
-	return Header{Id: id, Type: HeaderBytes, ValBytes: val, Private: private}
+	return Header{Id: id, Type: HeaderString, ValStr: val}
 }
 
 func BuildHeaderBytes(id int, val []byte) Header {
-	return BuildHeaderBytesRaw(id, val, false)
-}
-
-func BuildHeaderActorRaw(id int, val *ActorAddr, private bool) Header {
-	return Header{Id: id, Type: HeaderActorAddr, ValAddr: val, Private: private}
+	return Header{Id: id, Type: HeaderBytes, ValBytes: val}
 }
 
 func BuildHeaderActor(id int, val *ActorAddr) Header {
-	return BuildHeaderActorRaw(id, val, false)
-}
-
-func BuildHeaderInterfaceRaw(id int, val interface{}, private bool) Header {
-	return Header{Id: id, Type: HeaderInterface, ValInterface: val, Private: private}
-}
-
-func BuildHeaderInterface(id int, val interface{}) Header {
-	return BuildHeaderInterfaceRaw(id, val, false)
-}
-
-func BuildHeaderUint64Raw(id int, val uint64, private bool) Header {
-	return Header{Id: id, Type: HeaderUint64, ValUint64: val, Private: private}
+	return Header{Id: id, Type: HeaderActorAddr, ValAddr: val}
 }
 
 func BuildHeaderUint64(id int, val uint64) Header {
-	return BuildHeaderUint64Raw(id, val, false)
-}
-
-func BuildHeaderInt64Raw(id int, val int64, private bool) Header {
-	return Header{Id: id, Type: HeaderInt64, ValInt64: val, Private: private}
+	return Header{Id: id, Type: HeaderUint64, ValUint64: val}
 }
 
 func BuildHeaderInt64(id int, val int64) Header {
-	return BuildHeaderInt64Raw(id, val, false)
+	return Header{Id: id, Type: HeaderInt64, ValInt64: val}
 }
 
 type Headers []Header

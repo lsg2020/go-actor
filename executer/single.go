@@ -212,7 +212,7 @@ func (executer *SingleGoroutine) OnMessage(msg *goactor.DispatchMessage) {
 }
 
 func (executer *SingleGoroutine) OnResponse(session int, err error, data interface{}) {
-	msg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, session, nil, data, err, nil)
+	msg := goactor.NewDispatchMessage(nil, nil, nil, nil, goactor.ProtocolResponse, session, nil, data, err, nil)
 	executer.ch <- msg
 }
 

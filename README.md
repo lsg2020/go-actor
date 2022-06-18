@@ -51,6 +51,5 @@
 
 # 痛点
 * context取消的传递
-* 调用链传递需要context
 * prometheus指标增加
 * transport 支持多个system
