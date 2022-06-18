@@ -78,14 +78,7 @@ func (executer *MultipleGoroutine) OnResponse(session int, err error, data inter
 		return
 	}
 
-	msg := &goactor.DispatchMessage{
-		ResponseErr: err,
-		Content:     data,
-	}
-	msg.Headers.Put(
-		goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
-		goactor.BuildHeaderInt(goactor.HeaderIdSession, session),
-	)
+	msg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, session, nil, data, err, nil)
 	if waitInfo.asyncCB != nil {
 		go waitInfo.asyncCB(msg)
 		return

@@ -33,7 +33,7 @@ func (raw *Raw) Register(cmd string, cb goactor.ProtoHandler, extend ...interfac
 }
 
 func (raw *Raw) OnMessage(msg *goactor.DispatchMessage) {
-	datas, _, _ := raw.UnPack(nil, msg.Content)
+	datas, _, _ := raw.UnPackRequest(msg.Content)
 	msg.Content = datas[1:]
 
 	cmd := datas[0].(string)
@@ -49,10 +49,18 @@ func (raw *Raw) OnMessage(msg *goactor.DispatchMessage) {
 	}
 }
 
-func (raw *Raw) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
+func (raw *Raw) PackRequest(args ...interface{}) (interface{}, interface{}, error) {
 	return args, nil, nil
 }
 
-func (raw *Raw) UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error) {
+func (raw *Raw) PackResponse(ctx interface{}, args ...interface{}) (interface{}, error) {
+	return args, nil
+}
+
+func (raw *Raw) UnPackRequest(pack interface{}) ([]interface{}, interface{}, error) {
 	return pack.([]interface{}), nil, nil
+}
+
+func (raw *Raw) UnPackResponse(ctx interface{}, pack interface{}) ([]interface{}, error) {
+	return pack.([]interface{}), nil
 }

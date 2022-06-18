@@ -53,15 +53,13 @@ func (trans *FxTransport) Init(system *goactor.ActorSystem) error {
 
 func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
-		responseMsg := &goactor.DispatchMessage{
-			ResponseErr: err,
-			Content:     data,
-		}
-		responseMsg.Headers.Put(
+		headers := goactor.Headers{
 			goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
-			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.Headers.GetInt(goactor.HeaderIdSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.SessionId),
 			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
-		)
+		}
+		responseMsg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, msg.SessionId, headers, data, err, nil)
+
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
 			trans.system.Logger().Error("response pack error", zap.Error(perr))
@@ -81,12 +79,9 @@ func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 			trans.system.Logger().Error("receive invalid pack ", zap.Error(err))
 			return
 		}
-		dispatch := &goactor.DispatchMessage{
-			DispatchResponse: response,
-		}
-		dispatch.FromPB(msg)
+		dispatch := goactor.NewDispatchMessageFromPB(msg, response)
 
-		if dispatch.Headers.GetInt(goactor.HeaderIdProtocol) == goactor.ProtocolResponse {
+		if dispatch.ProtocolId == goactor.ProtocolResponse {
 			var requestMsg *goactor.DispatchMessage
 			trans.responseMutex.Lock()
 			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(goactor.HeaderIdTransSession))]
@@ -95,7 +90,7 @@ func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
 		} else {
-			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			session := dispatch.SessionId
 			if session == 0 {
 				dispatch.DispatchResponse = nil
 			}
@@ -112,7 +107,7 @@ func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 }
 
 func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
-	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
+	destination := msg.Destination
 	if destination == nil {
 		return nil, goactor.ErrNeedDestination
 	}
@@ -138,7 +133,7 @@ func (trans *FxTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCan
 	}
 	trans.nodeMutex.Unlock()
 
-	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
+	reqsession := msg.SessionId
 	transSession := int32(0)
 	if reqsession != 0 {
 		trans.responseMutex.Lock()

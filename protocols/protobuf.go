@@ -11,7 +11,7 @@ import (
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
 func NewProtobuf(id int, opts ...goactor.ProtoOption) *Protobuf {
 	allopts := append(([]goactor.ProtoOption)(nil), goactor.ProtoWithInterceptorCall(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
-		requestCtx := msg.Headers.GetInterface(goactor.HeaderIdRequestProtoPackCtx)
+		requestCtx := msg.ProtocolCtx
 		msg.Headers.Put(goactor.BuildHeaderString(goactor.HeaderIdMethod, requestCtx.(*PbMethod).Name))
 		return handler(msg, args...)
 	}))
@@ -58,7 +58,7 @@ func (p *Protobuf) Register(cmd string, cb goactor.ProtoHandler, extend ...inter
 }
 
 func (p *Protobuf) OnMessage(msg *goactor.DispatchMessage) {
-	datas, responseCtx, err := p.UnPack(nil, msg)
+	datas, responseCtx, err := p.UnPackRequest(msg)
 	if err != nil {
 		if msg.Headers.GetInt(goactor.HeaderIdSession) != 0 {
 			msg.Response(err)
@@ -67,7 +67,7 @@ func (p *Protobuf) OnMessage(msg *goactor.DispatchMessage) {
 		}
 		return
 	}
-	msg.Headers.Put(goactor.BuildHeaderInterfaceRaw(goactor.HeaderIdRequestProtoPackCtx, responseCtx, true))
+	msg.ProtocolCtx = responseCtx
 	cmd := responseCtx.(*PbMethod)
 	msg.Content = datas
 
@@ -77,24 +77,7 @@ func (p *Protobuf) OnMessage(msg *goactor.DispatchMessage) {
 	}
 }
 
-func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error) {
-	if ctx != nil {
-		// response msg
-		if len(args) != 1 {
-			return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d args len error %d", p.protoId, len(args))
-		}
-
-		msg, ok := args[0].(proto.Message)
-		if !ok {
-			return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type err %s", p.protoId, reflect.TypeOf(args[0]).String())
-		}
-		buf, err := proto.Marshal(msg)
-		if err != nil {
-			return nil, nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
-		}
-		return buf, nil, nil
-	}
-
+func (p *Protobuf) PackRequest(args ...interface{}) (interface{}, interface{}, error) {
 	// request msg
 	if len(args) != 2 {
 		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d params len err %d", p.protoId, len(args))
@@ -121,26 +104,24 @@ func (p *Protobuf) Pack(ctx interface{}, args ...interface{}) (interface{}, inte
 	return buf, cmd, nil
 }
 
-func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, interface{}, error) {
-	if ctx != nil {
-		var buf []byte
-		if args != nil {
-			var ok bool
-			buf, ok = args.([]byte)
-			if !ok {
-				return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d content type error %s", p.protoId, reflect.TypeOf(args).String())
-			}
-		}
-
-		// response msg
-		rsp := ctx.(*PbMethod).Rsp()
-		err := proto.Unmarshal(buf, rsp)
-		if err != nil {
-			return nil, nil, goactor.ErrorWrapf(err, "protocol:%d unmarshal error %s", p.protoId, rsp.String())
-		}
-		return []interface{}{rsp}, nil, nil
+func (p *Protobuf) PackResponse(ctx interface{}, args ...interface{}) (interface{}, error) {
+	// response msg
+	if len(args) != 1 {
+		return nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d args len error %d", p.protoId, len(args))
 	}
 
+	msg, ok := args[0].(proto.Message)
+	if !ok {
+		return nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type err %s", p.protoId, reflect.TypeOf(args[0]).String())
+	}
+	buf, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
+	}
+	return buf, nil
+}
+
+func (p *Protobuf) UnPackRequest(args interface{}) ([]interface{}, interface{}, error) {
 	msg, ok := args.(*goactor.DispatchMessage)
 	if !ok {
 		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d type error %s", p.protoId, reflect.TypeOf(args).String())
@@ -165,4 +146,23 @@ func (p *Protobuf) UnPack(ctx interface{}, args interface{}) ([]interface{}, int
 		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d unmarshal error %s", p.protoId, req.String())
 	}
 	return []interface{}{req}, cmd, nil
+}
+
+func (p *Protobuf) UnPackResponse(ctx interface{}, args interface{}) ([]interface{}, error) {
+	var buf []byte
+	if args != nil {
+		var ok bool
+		buf, ok = args.([]byte)
+		if !ok {
+			return nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d content type error %s", p.protoId, reflect.TypeOf(args).String())
+		}
+	}
+
+	// response msg
+	rsp := ctx.(*PbMethod).Rsp()
+	err := proto.Unmarshal(buf, rsp)
+	if err != nil {
+		return nil, goactor.ErrorWrapf(err, "protocol:%d unmarshal error %s", p.protoId, rsp.String())
+	}
+	return []interface{}{rsp}, nil
 }

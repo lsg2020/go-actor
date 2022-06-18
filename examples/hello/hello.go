@@ -48,7 +48,7 @@ func main() {
 	single := &executer.SingleGoroutine{}
 	single.Start(context.Background(), 1)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 2; i++ {
 		goactor.NewActor(&Actor{
 			Id: i,
 		}, single)

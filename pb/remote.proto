@@ -6,7 +6,6 @@ option go_package = ".;message";
 message Error {
     int32 code = 1;
     string msg = 2;
-    string stack = 3;
 }
 
 message ActorAddr {

@@ -6,24 +6,25 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
+	"github.com/lsg2020/go-actor/examples/TicTacToe/tracing"
 	"github.com/lsg2020/go-actor/protocols"
+	"go.uber.org/zap"
 )
 
-// TODO call 消息 对方被删除
 var ExistsPlayer = make(map[uint64]bool)
 
 func NewPlayer(system *goactor.ActorSystem, e goactor.Executer) *goactor.ActorAddr {
 	p := &Player{System: system}
-	managerProto := protocols.NewProtobuf(1)
+	managerProto := protocols.NewProtobuf(1, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterManagerService(nil, managerProto)
 
 	proto := protocols.NewProtobuf(2, goactor.ProtoWithInterceptorDispatch(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
 		p.KeepLive()
 		return handler(msg, args...)
-	}))
+	}), tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterPlayerService(p, proto)
 
-	gameProto := protocols.NewProtobuf(3)
+	gameProto := protocols.NewProtobuf(3, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterGameService(nil, gameProto)
 
 	actor := goactor.NewActor(p, e, goactor.ActorWithProto(proto), goactor.ActorWithProto(managerProto), goactor.ActorWithProto(gameProto))
@@ -75,7 +76,7 @@ func (p *Player) OnInit(actor goactor.Actor) {
 		}
 	})
 
-	actor.Logger().Infof("player start %#v", p.Name)
+	actor.Logger().Info("player start", zap.String("name", p.Name))
 }
 
 func (p *Player) OnRelease(actor goactor.Actor) {
@@ -85,7 +86,7 @@ func (p *Player) OnRelease(actor goactor.Actor) {
 		}, nil)
 	}
 
-	actor.Logger().Infof("player release %#v", p.Name)
+	actor.Logger().Info("player release", zap.String("name", p.Name))
 
 	delete(ExistsPlayer, uint64(p.actor.GetAddr(p.System).Handle)) // TODO Panic 被默认捕获
 }
@@ -100,13 +101,13 @@ func (p *Player) OnSetName(ctx *goactor.DispatchMessage, req *message.PlayerSetN
 }
 
 func (p *Player) OnIndex(ctx *goactor.DispatchMessage, req *message.PlayerIndexRequest) (*message.PlayerIndexResponse, error) {
-	gameList, err := p.ManagerClient.GameList(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGameListRequest{}, nil)
+	gameList, err := p.ManagerClient.GameList(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGameListRequest{}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil {
 		return nil, err
 	}
 	games := make([]*message.GameInfo, 0, len(p.gameAddrs))
 	for _, addr := range p.gameAddrs {
-		info, err := p.GameClient.Info(p.actor.Context(), p.System, p.actor, addr, &message.GameInfoRequest{Player: AddrToProto(p.actor.GetAddr(p.System))}, nil)
+		info, err := p.GameClient.Info(p.actor.Context(), p.System, p.actor, addr, &message.GameInfoRequest{Player: AddrToProto(p.actor.GetAddr(p.System))}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +127,7 @@ func (p *Player) OnCreateGame(ctx *goactor.DispatchMessage, req *message.PlayerC
 	_, err := p.ManagerClient.NewGame(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerNewGameRequest{
 		Name:   p.Name,
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +152,7 @@ func (p *Player) OnGetMoves(ctx *goactor.DispatchMessage, req *message.PlayerGet
 
 	rsp, err := p.GameClient.GetMoves(p.actor.Context(), p.System, p.actor, addr, &message.GameGetMovesRequest{
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +169,7 @@ func (p *Player) OnMakeMove(ctx *goactor.DispatchMessage, req *message.PlayerMak
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
 		X:      req.X,
 		Y:      req.Y,
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil {
 		return nil, err
 	}
@@ -178,26 +179,26 @@ func (p *Player) OnMakeMove(ctx *goactor.DispatchMessage, req *message.PlayerMak
 func (p *Player) OnJoin(ctx *goactor.DispatchMessage, req *message.PlayerJoinRequest) (*message.PlayerJoinResponse, error) {
 	gameAddr, err := p.ManagerClient.GetGame(p.actor.Context(), p.System, p.actor, p.ManagerSelector.Addr(), &message.ManagerGetGameRequest{
 		GameId: req.GameId,
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil || gameAddr.Game == nil {
 		return &message.PlayerJoinResponse{}, nil
 	}
 	p.GameClient.Join(p.actor.Context(), p.System, p.actor, ProtoToAddr(gameAddr.Game), &message.GameJoinRequest{
 		Player: AddrToProto(p.actor.GetAddr(p.System)),
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 
 	return &message.PlayerJoinResponse{}, nil
 }
 
 func (p *Player) OnOnJoinGame(ctx *goactor.DispatchMessage, req *message.PlayerOnJoinGameRequest) (*message.PlayerOnJoinGameResponse, error) {
-	p.actor.Logger().Infof("join game %s %d", req.GameId, req.Addr.Handle)
+	p.actor.Logger().Info("join game", zap.String("game_id", req.GameId), zap.Any("handle", req.Addr.Handle))
 	p.gameIds = append(p.gameIds, req.GameId)
 	p.gameAddrs = append(p.gameAddrs, ProtoToAddr(req.Addr))
 	return &message.PlayerOnJoinGameResponse{Name: p.Name}, nil
 }
 
 func (p *Player) OnOnLeaveGame(ctx *goactor.DispatchMessage, req *message.PlayerOnLeaveGameRequest) (*message.PlayerOnLeaveGameResponse, error) {
-	p.actor.Logger().Infof("leave game %s", req.GameId)
+	p.actor.Logger().Info("leave game", zap.String("game_id", req.GameId))
 
 	for i, gameId := range p.gameIds {
 		if gameId == req.GameId {

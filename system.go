@@ -219,7 +219,7 @@ func (system *ActorSystem) Register(a Actor, names ...string) *ActorAddr {
 	}
 
 	if a, ok := a.(*actorImpl); ok {
-		a.onRegister(system, addr)
+		a.onRegisterSystem(system, addr)
 	}
 
 	for _, name := range names {
@@ -235,7 +235,7 @@ func (system *ActorSystem) Register(a Actor, names ...string) *ActorAddr {
 func (system *ActorSystem) UnRegister(a Actor) {
 	ret, handle := system.handle.handleRetire(a)
 	if a, ok := a.(*actorImpl); ok {
-		a.onUnregister(system)
+		a.onUnregisterSystem(system)
 	}
 
 	system.namesMutex.Lock()
@@ -296,7 +296,7 @@ func (system *ActorSystem) IsRemoteActor(addr *ActorAddr) bool {
 
 // Dispatch 分发ActorSystem本节点的Actor消息
 func (system *ActorSystem) Dispatch(msg *DispatchMessage) error {
-	destination := msg.Headers.GetAddr(HeaderIdDestination)
+	destination := msg.Destination
 	if destination == nil {
 		return ErrNeedDestination
 	}

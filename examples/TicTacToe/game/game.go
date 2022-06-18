@@ -5,6 +5,7 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
+	"go.uber.org/zap"
 )
 
 type Game struct {
@@ -33,7 +34,7 @@ func (g *Game) Init(name string, gameId string, player *goactor.ActorAddr, manag
 	g.name = name
 	g.gameId = gameId
 	g.ManagerAddr = manager
-	g.join(player)
+	g.join(player, nil)
 }
 
 func (g *Game) OnInit(actor goactor.Actor) {
@@ -41,7 +42,7 @@ func (g *Game) OnInit(actor goactor.Actor) {
 	g.ManagerClient = message.NewManagerServiceClient(g.actor.GetProto(1))
 	g.PlayerClient = message.NewPlayerServiceClient(g.actor.GetProto(2))
 
-	actor.Logger().Infof("game start %#v", g.gameId)
+	actor.Logger().Info("game start", zap.String("game_id", g.gameId))
 }
 
 func (g *Game) OnRelease(actor goactor.Actor) {
@@ -57,10 +58,10 @@ func (g *Game) OnRelease(actor goactor.Actor) {
 	g.Players = nil
 	g.Watchers = nil
 
-	actor.Logger().Infof("game release %#v", g.gameId)
+	actor.Logger().Info("game release", zap.String("game_id", g.gameId))
 }
 
-func (g *Game) join(player *goactor.ActorAddr) {
+func (g *Game) join(player *goactor.ActorAddr, ctx *goactor.DispatchMessage) {
 	defer func() {
 		g.checkState()
 	}()
@@ -71,10 +72,14 @@ func (g *Game) join(player *goactor.ActorAddr) {
 		}
 	}
 
+	var ops *goactor.CallOptions
+	if ctx != nil {
+		ctx.ExtractEx(goactor.HeaderIdTracingSpan)
+	}
 	rsp, err := g.PlayerClient.OnJoinGame(g.actor.Context(), g.System, g.actor, player, &message.PlayerOnJoinGameRequest{
 		GameId: g.gameId,
 		Addr:   AddrToProto(g.actor.GetAddr(g.System)),
-	}, nil)
+	}, ops)
 	if err != nil {
 		return
 	}
@@ -88,21 +93,21 @@ func (g *Game) join(player *goactor.ActorAddr) {
 	g.Players = append(g.Players, player)
 	g.PlayerNames = append(g.PlayerNames, rsp.Name)
 
-	g.actor.Logger().Infof("game join %d", player.Handle)
+	g.actor.Logger().Info("game join", zap.Any("handle", player.Handle))
 }
 
-func (g *Game) leave(player *goactor.ActorAddr) {
+func (g *Game) leave(player *goactor.ActorAddr, ctx *goactor.DispatchMessage) {
 	defer func() {
 		g.checkState()
 	}()
 
-	g.actor.Logger().Infof("game leave %d", player.Handle)
+	g.actor.Logger().Info("game leave", zap.Any("handle", player.Handle))
 
 	_, err := g.PlayerClient.OnLeaveGame(g.actor.Context(), g.System, g.actor, player, &message.PlayerOnLeaveGameRequest{
 		GameId: g.gameId,
-	}, nil)
+	}, ctx.ExtractEx(goactor.HeaderIdTracingSpan))
 	if err != nil {
-		g.actor.Logger().Errorf("leave player error %s", err)
+		g.actor.Logger().Error("leave player error", zap.Error(err))
 	}
 
 	for i, watcher := range g.Watchers {
@@ -257,12 +262,12 @@ func (g *Game) buildInfo(player *goactor.ActorAddr) *message.GameInfo {
 }
 
 func (g *Game) OnJoin(ctx *goactor.DispatchMessage, req *message.GameJoinRequest) (*message.GameJoinResponse, error) {
-	g.join(ProtoToAddr(req.Player))
+	g.join(ProtoToAddr(req.Player), ctx)
 	return &message.GameJoinResponse{}, nil
 }
 
 func (g *Game) OnLeave(ctx *goactor.DispatchMessage, req *message.GameLeaveRequest) (*message.GameLeaveResponse, error) {
-	g.leave(ProtoToAddr(req.Player))
+	g.leave(ProtoToAddr(req.Player), ctx)
 	return &message.GameLeaveResponse{}, nil
 }
 

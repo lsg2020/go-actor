@@ -94,8 +94,8 @@ func (trans *TcpTransport) Init(system *goactor.ActorSystem) error {
 }
 
 func (trans *TcpTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
-	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
-	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
+	reqsession := msg.SessionId
+	destination := msg.Destination
 	if destination == nil {
 		return nil, goactor.ErrNeedDestination
 	}
@@ -169,15 +169,13 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 	}()
 
 	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
-		responseMsg := &goactor.DispatchMessage{
-			ResponseErr: err,
-			Content:     data,
-		}
-		responseMsg.Headers.Put(
+		headers := goactor.Headers{
 			goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
-			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.Headers.GetInt(goactor.HeaderIdSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.SessionId),
 			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
-		)
+		}
+		responseMsg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, msg.SessionId, headers, data, err, nil)
+
 		buf, pberr := proto.Marshal(responseMsg.ToPB())
 		if pberr != nil {
 			return
@@ -193,12 +191,9 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 			return
 		}
 
-		dispatch := &goactor.DispatchMessage{
-			DispatchResponse: response,
-		}
-		dispatch.FromPB(msg)
+		dispatch := goactor.NewDispatchMessageFromPB(msg, response)
 
-		if dispatch.Headers.GetInt(goactor.HeaderIdProtocol) == goactor.ProtocolResponse {
+		if dispatch.ProtocolId == goactor.ProtocolResponse {
 			var requestMsg *goactor.DispatchMessage
 			trans.responseMutex.Lock()
 			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(goactor.HeaderIdTransSession))]
@@ -209,7 +204,7 @@ func (trans *TcpTransport) reader(conn *tcpConnect) {
 				trans.system.Logger().Error("dispatch response message not exists", zap.Int("session", dispatch.Headers.GetInt(goactor.HeaderIdTransSession)))
 			}
 		} else {
-			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			session := dispatch.SessionId
 			if session == 0 {
 				dispatch.DispatchResponse = nil
 			}

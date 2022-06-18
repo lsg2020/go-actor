@@ -14,6 +14,7 @@ import (
 	goactor "github.com/lsg2020/go-actor"
 	"github.com/lsg2020/go-actor/examples/TicTacToe/game"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
+	"github.com/lsg2020/go-actor/examples/TicTacToe/tracing"
 	"github.com/lsg2020/go-actor/executer"
 	"github.com/lsg2020/go-actor/protocols"
 )
@@ -40,7 +41,7 @@ func NewGameController(s *goactor.ActorSystem) http.Handler {
 
 	// TODO
 	p := &clientActor{}
-	proto := protocols.NewProtobuf(2)
+	proto := protocols.NewProtobuf(2, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterPlayerService(nil, proto)
 	client = goactor.NewActor(p, single, goactor.ActorWithProto(proto))
 	playerClient = message.NewPlayerServiceClient(proto)

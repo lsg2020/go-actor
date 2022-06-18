@@ -7,8 +7,48 @@ import (
 // 内部协议id
 const (
 	ProtocolResponse = 0xff // 回复消息id
-	ProtocolSystem   = 0xfe // 内置系统消息id
+	ProtocolAdmin    = 0xfe // 内置系统消息id
 )
+
+func NewDispatchMessage(
+	destination *ActorAddr,
+	protocol Proto,
+	protocolCtx interface{},
+	protocolId int,
+	sessionId int,
+	headers Headers,
+	content interface{},
+	responseErr error,
+	response DispatchResponseCB,
+) *DispatchMessage {
+	msg := &DispatchMessage{
+		Content:     content,
+		ResponseErr: responseErr,
+
+		Protocol:         protocol,
+		ProtocolCtx:      protocolCtx,
+		DispatchResponse: response,
+		ProtocolId:       protocolId,
+		SessionId:        sessionId,
+		Destination:      destination,
+	}
+	if headers != nil {
+		msg.Headers = HeadersWrap{headers}
+	}
+
+	return msg
+}
+
+func NewDispatchMessageFromPB(data *message.Message, response DispatchResponseCB) *DispatchMessage {
+	msg := &DispatchMessage{
+		DispatchResponse: response,
+	}
+	msg.FromPB(data)
+	msg.Init()
+	return msg
+}
+
+type DispatchResponseCB func(msg *DispatchMessage, err error, data interface{})
 
 // DispatchMessage actor收发消息的载体,并存储一些上下文信息
 type DispatchMessage struct {
@@ -19,8 +59,28 @@ type DispatchMessage struct {
 	Content     interface{}
 	ResponseErr error
 
-	RequestProto     Proto
-	DispatchResponse func(msg *DispatchMessage, err error, data interface{})
+	Protocol         Proto
+	DispatchResponse DispatchResponseCB
+	ProtocolCtx      interface{}
+	SessionId        int
+	ProtocolId       int
+	Destination      *ActorAddr
+}
+
+func (msg *DispatchMessage) Init() {
+	if msg.SessionId == 0 {
+		msg.SessionId = msg.Headers.GetInt(HeaderIdSession)
+	}
+	if msg.ProtocolId == 0 {
+		msg.ProtocolId = msg.Headers.GetInt(HeaderIdProtocol)
+	}
+	if msg.Destination == nil {
+		msg.Destination = msg.Headers.GetAddr(HeaderIdDestination)
+	}
+}
+
+func (msg *DispatchMessage) Session() int {
+	return msg.SessionId
 }
 
 // Response 回复通知消息的接口
@@ -28,8 +88,8 @@ func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
 	if msg.DispatchResponse == nil {
 		return
 	}
-	if err != nil && msg.RequestProto != nil {
-		_ = msg.RequestProto.InterceptorError()(msg, nil, err)
+	if err != nil && msg.Protocol != nil {
+		_ = msg.Protocol.InterceptorError()(msg, nil, err)
 	}
 
 	if err != nil {
@@ -37,8 +97,7 @@ func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
 		msg.DispatchResponse = nil
 		return
 	}
-	requestProtoPackCtx := msg.Headers.GetInterface(HeaderIdRequestProtoPackCtx)
-	rsp, _, err := msg.RequestProto.Pack(requestProtoPackCtx, datas...)
+	rsp, err := msg.Protocol.PackResponse(msg.ProtocolCtx, datas...)
 	if err != nil {
 		msg.DispatchResponse(msg, err, nil)
 		msg.DispatchResponse = nil
@@ -49,7 +108,7 @@ func (msg *DispatchMessage) Response(err error, datas ...interface{}) {
 }
 
 func (msg *DispatchMessage) MaybeResponseErr(err error) {
-	if msg.Headers.GetInt(HeaderIdSession) == 0 {
+	if msg.SessionId == 0 {
 		return
 	}
 	msg.Response(err, nil)
@@ -232,9 +291,12 @@ type Proto interface {
 	Id() int
 	Name() string
 	OnMessage(msg *DispatchMessage)
-	Pack(ctx interface{}, args ...interface{}) (interface{}, interface{}, error)
-	UnPack(ctx interface{}, pack interface{}) ([]interface{}, interface{}, error)
 	Register(name string, cb ProtoHandler, extend ...interface{})
+
+	PackRequest(args ...interface{}) (interface{}, interface{}, error)       // returns: (pack, responseCtx, error)
+	UnPackRequest(pack interface{}) ([]interface{}, interface{}, error)      // returns: (args, responseCtx, error)
+	PackResponse(ctx interface{}, args ...interface{}) (interface{}, error)  // returns: (pack, error)
+	UnPackResponse(ctx interface{}, pack interface{}) ([]interface{}, error) // returns: (args, error)
 
 	// InterceptorCall 消息发送的拦截器,方便设置自定义消息头/消息名称等信息
 	InterceptorCall() ProtoInterceptor

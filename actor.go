@@ -29,7 +29,6 @@ type CallOptions struct {
 
 // Callback actor消息回调函数
 type Callback func(msg *DispatchMessage)
-
 type ExecCallback func() (interface{}, error)
 type ForkCallback func()
 
@@ -59,6 +58,7 @@ type Actor interface {
 	Timeout(d time.Duration, cb func())
 	Exec(ctx context.Context, f ExecCallback) (interface{}, error)
 	Fork(f ForkCallback)
+
 	GenSession() int
 	Wait(ctx context.Context, session int) (interface{}, error)
 	Wakeup(session int, err error, data interface{})
@@ -83,10 +83,9 @@ type actorImpl struct {
 	addrs        map[*ActorSystem]*ActorAddr
 	waitSessions map[int]struct{}
 
-	cb          Callback
-	protoSystem Proto
-
-	ops *actorOptions
+	protoAdmin Proto
+	cb         Callback
+	ops        *actorOptions
 }
 
 func (a *actorImpl) Instance() ActorInstance {
@@ -114,10 +113,10 @@ func (a *actorImpl) GetState() ActorState {
 }
 
 func (a *actorImpl) response(msg *DispatchMessage, err error, data interface{}) {
-	a.executer.OnResponse(msg.Headers.GetInt(HeaderIdSession), err, data)
+	a.executer.OnResponse(msg.Session(), err, data)
 }
 
-func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
+func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, protocolCtx interface{}, session int, data interface{}, options *CallOptions) *DispatchMessage {
 	var header Headers
 	header = header.Put(
 		BuildHeaderInt(HeaderIdProtocol, proto.Id()),
@@ -128,9 +127,6 @@ func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCt
 	if session != 0 {
 		header = header.Put(BuildHeaderInt(HeaderIdSession, session))
 	}
-	if requestCtx != nil {
-		header = header.Put(BuildHeaderInterfaceRaw(HeaderIdRequestProtoPackCtx, requestCtx, true))
-	}
 	if options != nil && options.Headers != nil {
 		header = header.Put(options.Headers...)
 	}
@@ -140,13 +136,7 @@ func (a *actorImpl) buildSendPack(destination *ActorAddr, proto Proto, requestCt
 		response = nil
 	}
 
-	msg := &DispatchMessage{
-		Headers: HeadersWrap{header},
-		Content: data,
-
-		RequestProto:     proto,
-		DispatchResponse: response,
-	}
+	msg := NewDispatchMessage(destination, proto, protocolCtx, proto.Id(), session, header, data, nil, response)
 	return msg
 }
 
@@ -207,12 +197,12 @@ func (a *actorImpl) SendProto(system *ActorSystem, destination *ActorAddr, proto
 		return ErrProtocolNotExists
 	}
 
-	msg, requestCtx, err := proto.Pack(nil, data...)
+	msg, protocolCtx, err := proto.PackRequest(data...)
 	if err != nil {
 		return err
 	}
 
-	sendPack := a.buildSendPack(destination, proto, requestCtx, 0, msg, options)
+	sendPack := a.buildSendPack(destination, proto, protocolCtx, 0, msg, options)
 	sendHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelTrans, err := system.transport(destination, msg)
 		if err != nil {
@@ -237,14 +227,14 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 		return nil, ErrProtocolNotExists
 	}
 
-	msg, requestCtx, err := proto.Pack(nil, data...)
+	msg, protocolCtx, err := proto.PackRequest(data...)
 	if err != nil {
 		return nil, err
 	}
 	session := a.executer.NewSession()
 
 	var rets interface{}
-	sendPack := a.buildSendPack(destination, proto, requestCtx, session, msg, options)
+	sendPack := a.buildSendPack(destination, proto, protocolCtx, session, msg, options)
 	callHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		cancelSession := a.preWait(session, nil)
 		defer cancelSession()
@@ -273,7 +263,7 @@ func (a *actorImpl) CallProto(ctx context.Context, system *ActorSystem, destinat
 		return nil, err
 	}
 
-	datas, _, err := proto.UnPack(requestCtx, rets)
+	datas, err := proto.UnPackResponse(protocolCtx, rets)
 	return datas, err
 }
 
@@ -291,13 +281,13 @@ func (a *actorImpl) GetAddr(system *ActorSystem) *ActorAddr {
 	return addr
 }
 
-func (a *actorImpl) onRegister(system *ActorSystem, addr *ActorAddr) {
+func (a *actorImpl) onRegisterSystem(system *ActorSystem, addr *ActorAddr) {
 	a.actorMutex.Lock()
 	a.addrs[system] = addr
 	a.actorMutex.Unlock()
 }
 
-func (a *actorImpl) onUnregister(system *ActorSystem) {
+func (a *actorImpl) onUnregisterSystem(system *ActorSystem) {
 	a.actorMutex.Lock()
 	delete(a.addrs, system)
 	a.actorMutex.Unlock()
@@ -352,11 +342,11 @@ func (a *actorImpl) onKill() {
 	a.Instance().OnRelease(a)
 }
 
-func (a *actorImpl) dispatchSystemProto(session int, args ...interface{}) {
-	data, _, _ := a.protoSystem.Pack(nil, args...)
+func (a *actorImpl) dispatchAdminProto(session int, args ...interface{}) {
+	data, _, _ := a.protoAdmin.PackRequest(args...)
 	var headers Headers
 	headers = headers.Put(
-		BuildHeaderInt(HeaderIdProtocol, a.protoSystem.Id()),
+		BuildHeaderInt(HeaderIdProtocol, a.protoAdmin.Id()),
 	)
 	response := a.response
 	if session != 0 {
@@ -365,18 +355,13 @@ func (a *actorImpl) dispatchSystemProto(session int, args ...interface{}) {
 		response = nil
 	}
 
-	msg := &DispatchMessage{
-		Headers:          HeadersWrap{headers},
-		Content:          data,
-		DispatchResponse: response,
-	}
-
+	msg := NewDispatchMessage(nil, a.protoAdmin, nil, a.protoAdmin.Id(), session, headers, data, nil, response)
 	systemHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		a.Dispatch(nil, msg)
 		return nil
 	}
 
-	interceptor := a.protoSystem.InterceptorCall()
+	interceptor := a.protoAdmin.InterceptorCall()
 	if interceptor != nil {
 		_ = interceptor(msg, systemHandler)
 	} else {
@@ -385,7 +370,7 @@ func (a *actorImpl) dispatchSystemProto(session int, args ...interface{}) {
 }
 
 func (a *actorImpl) Kill() {
-	a.dispatchSystemProto(0, "kill")
+	a.dispatchAdminProto(0, "kill")
 }
 
 func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, error) {
@@ -393,13 +378,13 @@ func (a *actorImpl) Exec(ctx context.Context, f ExecCallback) (interface{}, erro
 	cancel := a.preWait(session, nil)
 	defer cancel()
 
-	a.dispatchSystemProto(session, "exec", f)
+	a.dispatchAdminProto(session, "exec", f)
 	r, err := a.wait(ctx, session)
 	return r, err
 }
 
 func (a *actorImpl) Fork(f ForkCallback) {
-	a.dispatchSystemProto(0, "fork", f)
+	a.dispatchAdminProto(0, "fork", f)
 }
 
 func (a *actorImpl) Timeout(d time.Duration, cb func()) {
@@ -470,10 +455,10 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 					a.Logger().Error("actor message error", zap.Any("recover", r))
 				}
 			}
-			if msg.DispatchResponse != nil && msg.Headers.GetInt(HeaderIdSession) != 0 {
-				a.Logger().Error("maybe forget response")
-				msg.Response(ErrForgetResponse, nil)
-			}
+			//if msg.DispatchResponse != nil && msg.Headers.GetInt(HeaderIdSession) != 0 {
+			//	a.Logger().Error("maybe forget response")
+			//	msg.Response(ErrForgetResponse, nil)
+			//}
 		}()
 
 		protocol := msg.Headers.GetInt(HeaderIdProtocol)
@@ -483,17 +468,45 @@ func NewActor(inst ActorInstance, executer Executer, options ...ActorOption) Act
 			a.Logger().Error("actor message protocol not exists", zap.Int("protocol", protocol))
 			return
 		}
-		msg.RequestProto = p
+		msg.Protocol = p
 
 		p.OnMessage(msg)
 	}
 
 	a.context, a.cancel = context.WithCancel(ops.ctx)
 
-	a.protoSystem = NewProtoSystem()
-	a.ops.protos = append(a.ops.protos, a.protoSystem)
+	a.protoAdmin = a.GetProto(ProtocolAdmin)
+	if a.protoAdmin == nil {
+		p := &ProtoAdmin{
+			ProtoBaseImpl: ProtoBaseBuild(
+				ProtoWithInterceptorCall(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
+					msg.Headers.Put(BuildHeaderString(HeaderIdMethod, msg.Content.([]interface{})[0].(string)))
+					return handler(msg, args...)
+				}),
+				ProtoWithInterceptorDispatch(func(msg *DispatchMessage, handler ProtoHandler, args ...interface{}) error {
+					defer func() {
+						if msg.Actor != nil && msg.Actor.GetState() == ActorStateStop {
+							return
+						}
+						if r := recover(); r != nil {
+							logger := DefaultLogger()
+							if msg.Actor != nil {
+								logger = msg.Actor.Logger()
+							}
+							logger.Error("system recover", zap.String("cmd", msg.Headers.GetStr(HeaderIdMethod)))
+							panic(r)
+						}
+					}()
+					return handler(msg, args...)
+				}),
+			),
+		}
+		p.Init()
+		a.protoAdmin = p
+		a.ops.protos = append(a.ops.protos, a.protoAdmin)
+	}
 
 	// init message
-	a.dispatchSystemProto(0, "init")
+	a.dispatchAdminProto(0, "init")
 	return a
 }

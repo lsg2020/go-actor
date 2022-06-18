@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-type SingleGoroutineResponseInfo struct {
-	cond    *sync.Cond
-	asyncCB func(msg *goactor.DispatchMessage)
+type responseInfo struct {
+	syncCond *sync.Cond
+	asyncCB  func(msg *goactor.DispatchMessage)
 }
 
 // SingleGoroutine 是一个单协程执行器
@@ -29,7 +29,7 @@ type SingleGoroutine struct {
 	workAmount int
 	waitAmount int
 
-	responseWait map[int]SingleGoroutineResponseInfo
+	responseWait map[int]responseInfo
 	responseMsg  *goactor.DispatchMessage
 
 	waitMutex         sync.Mutex
@@ -50,16 +50,16 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 	for !finish {
 		select {
 		case msg := <-executer.ch:
-			protocol := msg.Headers.GetInt(goactor.HeaderIdProtocol)
+			protocol := msg.ProtocolId
 			if protocol == goactor.ProtocolResponse {
-				session := msg.Headers.GetInt(goactor.HeaderIdSession)
+				session := msg.SessionId
 				responseWaitInfo, ok := executer.responseWait[session]
 				if ok {
 					if responseWaitInfo.asyncCB != nil {
 						responseWaitInfo.asyncCB(msg)
 					} else {
 						executer.responseMsg = msg
-						responseWaitInfo.cond.Signal()
+						responseWaitInfo.syncCond.Signal()
 						executer.cond.Wait()
 						executer.workId = workId
 					}
@@ -120,7 +120,7 @@ func (executer *SingleGoroutine) Wait(ctx context.Context, session int) (interfa
 	executer.waitMutex.Unlock()
 
 	executer.cond.Signal()
-	responseWaitInfo.cond.Wait()
+	responseWaitInfo.syncCond.Wait()
 
 	executer.waitMutex.Lock()
 	delete(executer.waitContextMap, session)
@@ -147,7 +147,7 @@ func (executer *SingleGoroutine) Start(ctx context.Context, initWorkAmount int) 
 
 	executer.context = ctx
 	executer.ch = make(chan *goactor.DispatchMessage, 256)
-	executer.responseWait = make(map[int]SingleGoroutineResponseInfo)
+	executer.responseWait = make(map[int]responseInfo)
 
 	executer.workAmount = initWorkAmount
 
@@ -212,14 +212,7 @@ func (executer *SingleGoroutine) OnMessage(msg *goactor.DispatchMessage) {
 }
 
 func (executer *SingleGoroutine) OnResponse(session int, err error, data interface{}) {
-	msg := &goactor.DispatchMessage{
-		ResponseErr: err,
-		Content:     data,
-	}
-	msg.Headers.Put(
-		goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
-		goactor.BuildHeaderInt(goactor.HeaderIdSession, session),
-	)
+	msg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, session, nil, data, err, nil)
 	executer.ch <- msg
 }
 
@@ -237,10 +230,10 @@ func (executer *SingleGoroutine) PreWait(session int, asyncCB func(msg *goactor.
 		delete(executer.responseWait, session)
 	}
 	if asyncCB != nil {
-		executer.responseWait[session] = SingleGoroutineResponseInfo{asyncCB: asyncCB}
+		executer.responseWait[session] = responseInfo{asyncCB: asyncCB}
 		return cancel
 	}
 	cond := sync.NewCond(executer.cond.L)
-	executer.responseWait[session] = SingleGoroutineResponseInfo{cond: cond}
+	executer.responseWait[session] = responseInfo{syncCond: cond}
 	return cancel
 }

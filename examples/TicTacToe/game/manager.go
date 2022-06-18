@@ -5,6 +5,7 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
+	"github.com/lsg2020/go-actor/examples/TicTacToe/tracing"
 	"github.com/lsg2020/go-actor/protocols"
 )
 
@@ -26,11 +27,11 @@ type Manager struct {
 func (m *Manager) OnInit(actor goactor.Actor) {
 	m.actor = actor
 	m.NextGameId = 1
-	actor.Logger().Infof("manager start %#v", m)
+	actor.Logger().Info("manager start")
 }
 
 func (m *Manager) OnRelease(actor goactor.Actor) {
-	actor.Logger().Infof("manager release %#v", m)
+	actor.Logger().Info("manager release")
 }
 
 func (m *Manager) OnNewGame(ctx *goactor.DispatchMessage, req *message.ManagerNewGameRequest) (*message.ManagerNewGameResponse, error) {
@@ -38,13 +39,13 @@ func (m *Manager) OnNewGame(ctx *goactor.DispatchMessage, req *message.ManagerNe
 	m.NextGameId++
 
 	g := &Game{System: m.System}
-	managerProto := protocols.NewProtobuf(1)
+	managerProto := protocols.NewProtobuf(1, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterManagerService(nil, managerProto)
 
-	proto := protocols.NewProtobuf(2)
+	proto := protocols.NewProtobuf(2, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterPlayerService(nil, proto)
 
-	gameProto := protocols.NewProtobuf(3)
+	gameProto := protocols.NewProtobuf(3, tracing.InterceptorCall(), tracing.InterceptorDispatch())
 	message.RegisterGameService(g, gameProto)
 
 	actor := goactor.NewActor(g, m.actor.GetExecuter(), goactor.ActorWithProto(proto), goactor.ActorWithProto(managerProto), goactor.ActorWithProto(gameProto))

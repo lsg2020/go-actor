@@ -13,18 +13,17 @@ const (
 )
 
 const (
-	HeaderIdMethod              = 1
-	HeaderIdProtocol            = 2
-	HeaderIdSession             = 3
-	HeaderIdTransport           = 4
-	HeaderIdSource              = 5
-	HeaderIdDestination         = 6
-	HeaderIdTransSession        = 7
-	HeaderIdTransAddress        = 8
-	HeaderIdTransAddress2       = 9
-	HeaderIdRequestProtoPackCtx = 10
-	HeaderIdTracingSpan         = 11
-	HeaderIdTracingSpanCarrier  = 12
+	HeaderIdMethod             = 1
+	HeaderIdProtocol           = 2
+	HeaderIdSession            = 3
+	HeaderIdTransport          = 4
+	HeaderIdSource             = 5
+	HeaderIdDestination        = 6
+	HeaderIdTransSession       = 7
+	HeaderIdTransAddress       = 8
+	HeaderIdTransAddress2      = 9
+	HeaderIdTracingSpan        = 11
+	HeaderIdTracingSpanCarrier = 12
 )
 
 type Header struct {

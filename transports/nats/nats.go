@@ -54,15 +54,13 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 	node := fmt.Sprintf("%d", system.InstanceID())
 
 	response := func(msg *goactor.DispatchMessage, err error, data interface{}) {
-		responseMsg := &goactor.DispatchMessage{
-			ResponseErr: err,
-			Content:     data,
-		}
-		responseMsg.Headers.Put(
+		headers := goactor.Headers{
 			goactor.BuildHeaderInt(goactor.HeaderIdProtocol, goactor.ProtocolResponse),
-			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.Headers.GetInt(goactor.HeaderIdSession)),
+			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.SessionId),
 			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
-		)
+		}
+		responseMsg := goactor.NewDispatchMessage(nil, nil, nil, goactor.ProtocolResponse, msg.SessionId, headers, data, err, nil)
+
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
 			system.Logger().Error("response pack error", zap.Error(perr))
@@ -86,12 +84,9 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 			return
 		}
 
-		dispatch := &goactor.DispatchMessage{
-			DispatchResponse: response,
-		}
-		dispatch.FromPB(msg)
+		dispatch := goactor.NewDispatchMessageFromPB(msg, response)
 
-		if dispatch.Headers.GetInt(goactor.HeaderIdProtocol) == goactor.ProtocolResponse {
+		if dispatch.ProtocolId == goactor.ProtocolResponse {
 			var requestMsg *goactor.DispatchMessage
 			trans.responseMutex.Lock()
 			requestMsg = trans.responses[int32(dispatch.Headers.GetInt(goactor.HeaderIdTransSession))]
@@ -100,7 +95,7 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 				requestMsg.DispatchResponse(dispatch, dispatch.ResponseErr, dispatch.Content)
 			}
 		} else {
-			session := dispatch.Headers.GetInt(goactor.HeaderIdSession)
+			session := dispatch.SessionId
 			if session == 0 {
 				dispatch.DispatchResponse = nil
 			}
@@ -120,7 +115,7 @@ func (trans *NatsTransport) Init(system *goactor.ActorSystem) error {
 }
 
 func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionCancel, error) {
-	destination := msg.Headers.GetAddr(goactor.HeaderIdDestination)
+	destination := msg.Destination
 	if destination == nil {
 		return nil, goactor.ErrNeedDestination
 	}
@@ -144,7 +139,7 @@ func (trans *NatsTransport) Send(msg *goactor.DispatchMessage) (goactor.SessionC
 	}
 	trans.nodeMutex.Unlock()
 
-	reqsession := msg.Headers.GetInt(goactor.HeaderIdSession)
+	reqsession := msg.SessionId
 	transSession := int32(0)
 	if reqsession != 0 {
 		trans.responseMutex.Lock()
