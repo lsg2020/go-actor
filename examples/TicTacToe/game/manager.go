@@ -5,8 +5,9 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
-	"github.com/lsg2020/go-actor/examples/TicTacToe/tracing"
-	"github.com/lsg2020/go-actor/protocols"
+	"github.com/lsg2020/go-actor/protocols/protobuf"
+	"github.com/lsg2020/go-actor/protocols/protobuf/tracing"
+	"github.com/opentracing/opentracing-go"
 )
 
 type gameInfo struct {
@@ -38,14 +39,25 @@ func (m *Manager) OnNewGame(ctx *goactor.DispatchMessage, req *message.ManagerNe
 	gameId := m.NextGameId
 	m.NextGameId++
 
+	gameTracingTags := func(msg *goactor.DispatchMessage) opentracing.Tags {
+		if msg.Actor != nil {
+			if p, ok := msg.Actor.Instance().(*Game); ok {
+				tags := opentracing.Tags{}
+				tags["game_id"] = p.gameId
+				return tags
+			}
+		}
+		return nil
+	}
+	tracer := opentracing.GlobalTracer()
 	g := &Game{System: m.System}
-	managerProto := protocols.NewProtobuf(1, tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	managerProto := protobuf.NewProtobuf(1, tracing.InterceptorCallTags(tracer, gameTracingTags), tracing.InterceptorDispatchTags(tracer, gameTracingTags), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterManagerService(nil, managerProto)
 
-	proto := protocols.NewProtobuf(2, tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	proto := protobuf.NewProtobuf(2, tracing.InterceptorCallTags(tracer, gameTracingTags), tracing.InterceptorDispatchTags(tracer, gameTracingTags), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterPlayerService(nil, proto)
 
-	gameProto := protocols.NewProtobuf(3, tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	gameProto := protobuf.NewProtobuf(3, tracing.InterceptorCallTags(tracer, gameTracingTags), tracing.InterceptorDispatchTags(tracer, gameTracingTags), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterGameService(g, gameProto)
 
 	actor := goactor.NewActor(g, m.actor.GetExecuter(), goactor.ActorWithProto(proto), goactor.ActorWithProto(managerProto), goactor.ActorWithProto(gameProto))

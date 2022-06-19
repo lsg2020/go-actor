@@ -14,6 +14,7 @@ const (
 
 func NewDispatchMessage(
 	ctx context.Context,
+	actor Actor,
 	destination *ActorAddr,
 	protocol Proto,
 	protocolCtx interface{},
@@ -25,6 +26,8 @@ func NewDispatchMessage(
 	response DispatchResponseCB,
 ) *DispatchMessage {
 	msg := &DispatchMessage{
+		Actor: actor,
+
 		Content:     content,
 		ResponseErr: responseErr,
 

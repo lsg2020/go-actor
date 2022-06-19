@@ -1,19 +1,17 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"io"
+	"fmt"
 	"log"
 	"time"
 
 	goactor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
-	"github.com/lsg2020/go-actor/protocols"
+	"github.com/lsg2020/go-actor/protocols/protobuf"
+	"github.com/lsg2020/go-actor/protocols/protobuf/tracing"
 	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go"
-	jaegercfg "github.com/uber/jaeger-client-go/config"
 )
 
 var system *goactor.ActorSystem
@@ -23,6 +21,7 @@ var selector goactor.Selector
 type HelloActor struct {
 	actor goactor.Actor
 	addr  *goactor.ActorAddr
+	name  string
 }
 
 func (hello *HelloActor) OnInit(a goactor.Actor) {
@@ -80,35 +79,6 @@ func (c *ClientActor) OnInit(a goactor.Actor) {
 func (c *ClientActor) OnRelease(a goactor.Actor) {
 }
 
-// NewTracer 创建一个jaeger Tracer
-func NewTracer(serviceName, addr string) (opentracing.Tracer, io.Closer, error) {
-	cfg := jaegercfg.Configuration{
-		ServiceName: serviceName,
-		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans:            true,
-			BufferFlushInterval: 1 * time.Second,
-		},
-	}
-
-	sender, err := jaeger.NewUDPTransport(addr, 0)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	reporter := jaeger.NewRemoteReporter(sender)
-	// Initialize tracer with a logger and a metrics factory
-	tracer, closer, err := cfg.NewTracer(
-		jaegercfg.Logger(jaeger.StdLogger),
-		jaegercfg.Reporter(reporter),
-	)
-
-	return tracer, closer, err
-}
-
 func main() {
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*30)
 	var err error
@@ -125,40 +95,24 @@ func main() {
 	single := &executer.SingleGoroutine{}
 	single.Start(context.Background(), 1)
 
-	tracer, _, err := NewTracer("hello_1", "10.21.248.28:5775")
+	tracer, _, err := tracing.NewTracer("hello_4", "10.21.248.28:5775")
 	if err != nil {
 		panic(err)
 	}
 	opentracing.SetGlobalTracer(tracer)
 
-	proto := protocols.NewProtobuf(1, goactor.ProtoWithInterceptorCall(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
-		method := msg.Headers.GetStr(goactor.HeaderIdMethod)
-		span := msg.Headers.GetInterface(goactor.HeaderIdTracingSpan)
-		var spanContext opentracing.Span
-		if span == nil {
-			spanContext = tracer.StartSpan(method)
-		} else {
-			spanContext = tracer.StartSpan(method, opentracing.ChildOf(span.(opentracing.Span).Context()))
+	tagName := func(msg *goactor.DispatchMessage) opentracing.Tags {
+		if msg.Actor != nil {
+			if hello, ok := msg.Actor.Instance().(*HelloActor); ok {
+				tags := opentracing.Tags{}
+				tags["name"] = hello.name
+				return tags
+			}
 		}
-		defer spanContext.Finish()
+		return nil
+	}
 
-		carrier := new(bytes.Buffer)
-		tracer.Inject(spanContext.Context(), opentracing.Binary, carrier)
-		msg.Headers.Put(goactor.BuildHeaderBytes(goactor.HeaderIdTracingSpanCarrier, carrier.Bytes()))
-
-		return handler(msg, args...)
-	}), goactor.ProtoWithInterceptorDispatch(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
-		spanCarrier := msg.Headers.GetBytes(goactor.HeaderIdTracingSpanCarrier)
-		spanContext, err := tracer.Extract(opentracing.Binary, bytes.NewBuffer(spanCarrier))
-		if err != nil {
-			return goactor.ErrorWrapf(err, "tracer extract err")
-		}
-		span := tracer.StartSpan("operation", opentracing.ChildOf(spanContext))
-		defer span.Finish()
-		msg.Headers.Put(goactor.BuildHeaderInterfaceRaw(goactor.HeaderIdTracingSpan, span, true))
-
-		return handler(msg, args...)
-	}))
+	proto := protobuf.NewProtobuf(1, tracing.InterceptorCallTags(tracer, tagName), tracing.InterceptorDispatchTags(tracer, tagName), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	hello.RegisterHelloService(&HelloService{}, proto)
 	client = hello.NewHelloServiceClient(proto)
 
@@ -168,7 +122,7 @@ func main() {
 	}
 
 	for i := 0; i < 10; i++ {
-		goactor.NewActor(&HelloActor{}, single, goactor.ActorWithProto(proto))
+		goactor.NewActor(&HelloActor{name: fmt.Sprintf("hello_%d", i)}, single, goactor.ActorWithProto(proto))
 	}
 
 	goactor.NewActor(&ClientActor{}, single, goactor.ActorWithProto(proto))

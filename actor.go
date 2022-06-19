@@ -136,7 +136,7 @@ func (a *actorImpl) buildSendPack(ctx context.Context, destination *ActorAddr, p
 		response = nil
 	}
 
-	msg := NewDispatchMessage(ctx, destination, proto, protocolCtx, proto.Id(), session, header, data, nil, response)
+	msg := NewDispatchMessage(ctx, a, destination, proto, protocolCtx, proto.Id(), session, header, data, nil, response)
 	return msg
 }
 
@@ -355,7 +355,7 @@ func (a *actorImpl) dispatchAdminProto(ctx context.Context, session int, args ..
 		response = nil
 	}
 
-	msg := NewDispatchMessage(ctx, nil, a.protoAdmin, nil, a.protoAdmin.Id(), session, headers, data, nil, response)
+	msg := NewDispatchMessage(ctx, a, nil, a.protoAdmin, nil, a.protoAdmin.Id(), session, headers, data, nil, response)
 	systemHandler := func(msg *DispatchMessage, args ...interface{}) error {
 		a.Dispatch(nil, msg)
 		return nil

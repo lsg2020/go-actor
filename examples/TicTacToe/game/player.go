@@ -6,25 +6,38 @@ import (
 
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/examples/TicTacToe/pb"
-	"github.com/lsg2020/go-actor/examples/TicTacToe/tracing"
-	"github.com/lsg2020/go-actor/protocols"
+	"github.com/lsg2020/go-actor/protocols/protobuf"
+	"github.com/lsg2020/go-actor/protocols/protobuf/tracing"
+	"github.com/opentracing/opentracing-go"
 	"go.uber.org/zap"
 )
 
 var ExistsPlayer = make(map[uint64]bool)
 
 func NewPlayer(system *goactor.ActorSystem, e goactor.Executer) *goactor.ActorAddr {
+	playerTracingTags := func(msg *goactor.DispatchMessage) opentracing.Tags {
+		if msg.Actor != nil {
+			if p, ok := msg.Actor.Instance().(*Player); ok {
+				tags := opentracing.Tags{}
+				tags["player_name"] = p.Name
+				return tags
+			}
+		}
+		return nil
+	}
+	tracer := opentracing.GlobalTracer()
+
 	p := &Player{System: system}
-	managerProto := protocols.NewProtobuf(1, tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	managerProto := protobuf.NewProtobuf(1, tracing.InterceptorCallTags(tracer, playerTracingTags), tracing.InterceptorDispatchTags(tracer, playerTracingTags), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterManagerService(nil, managerProto)
 
-	proto := protocols.NewProtobuf(2, goactor.ProtoWithInterceptorDispatch(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
+	proto := protobuf.NewProtobuf(2, tracing.InterceptorCallTags(tracer, playerTracingTags), tracing.InterceptorDispatchTags(tracer, playerTracingTags), goactor.ProtoWithInterceptorDispatch(func(msg *goactor.DispatchMessage, handler goactor.ProtoHandler, args ...interface{}) error {
 		p.KeepLive()
 		return handler(msg, args...)
-	}), tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	}), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterPlayerService(p, proto)
 
-	gameProto := protocols.NewProtobuf(3, tracing.InterceptorCall(), tracing.InterceptorDispatch())
+	gameProto := protobuf.NewProtobuf(3, tracing.InterceptorCallTags(tracer, playerTracingTags), tracing.InterceptorDispatchTags(tracer, playerTracingTags), tracing.InterceptorCall(tracer), tracing.InterceptorDispatch(tracer))
 	message.RegisterGameService(nil, gameProto)
 
 	actor := goactor.NewActor(p, e, goactor.ActorWithProto(proto), goactor.ActorWithProto(managerProto), goactor.ActorWithProto(gameProto))

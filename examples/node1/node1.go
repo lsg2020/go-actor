@@ -8,7 +8,7 @@ import (
 	goactor "github.com/lsg2020/go-actor"
 	hello "github.com/lsg2020/go-actor/examples/pb"
 	"github.com/lsg2020/go-actor/executer"
-	"github.com/lsg2020/go-actor/protocols"
+	"github.com/lsg2020/go-actor/protocols/protobuf"
 	"github.com/lsg2020/go-actor/transports/tcp"
 )
 
@@ -72,7 +72,7 @@ func main() {
 	single := &executer.SingleGoroutine{}
 	single.Start(context.Background(), 1)
 
-	proto := protocols.NewProtobuf(1)
+	proto := protobuf.NewProtobuf(1)
 	hello.RegisterHelloService(&HelloService{}, proto)
 	client = hello.NewHelloServiceClient(proto)
 

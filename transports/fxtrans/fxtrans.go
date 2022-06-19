@@ -58,7 +58,7 @@ func (trans *FxTransport) ReceiveCB() func(buf []byte) {
 			goactor.BuildHeaderInt(goactor.HeaderIdSession, msg.SessionId),
 			goactor.BuildHeaderInt(goactor.HeaderIdTransSession, msg.Headers.GetInt(goactor.HeaderIdTransSession)),
 		}
-		responseMsg := goactor.NewDispatchMessage(nil, nil, nil, nil, goactor.ProtocolResponse, msg.SessionId, headers, data, err, nil)
+		responseMsg := goactor.NewDispatchMessage(nil, nil, nil, nil, nil, goactor.ProtocolResponse, msg.SessionId, headers, data, err, nil)
 
 		buf, perr := proto.Marshal(responseMsg.ToPB())
 		if perr != nil {
