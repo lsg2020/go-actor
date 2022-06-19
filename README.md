@@ -49,7 +49,7 @@
 	goactor.NewActor(&HelloActor{}, single, goactor.ActorWithProto(proto))
 ```
 
-# 痛点
+# TODO
 * context取消的传递
 * prometheus指标增加
 * transport 支持多个system

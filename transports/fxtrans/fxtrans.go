@@ -4,10 +4,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 func NewFx(service string, node string, sendMsg func(string, string, []byte) error) *FxTransport {

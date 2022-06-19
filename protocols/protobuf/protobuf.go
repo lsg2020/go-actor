@@ -3,9 +3,9 @@ package protobuf
 import (
 	"reflect"
 
-	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 // NewProtobuf 处理protobuf消息的打包/解包/注册分发
@@ -93,7 +93,7 @@ func (p *Protobuf) PackRequest(args ...interface{}) (interface{}, interface{}, e
 	}
 	buf, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
+		return nil, nil, goactor.ErrorWrapf(err, "protocol:%d marshal error", p.protoId)
 	}
 
 	cmd := p.cmds[method]
@@ -116,7 +116,7 @@ func (p *Protobuf) PackResponse(ctx interface{}, args ...interface{}) (interface
 	}
 	buf, err := proto.Marshal(msg)
 	if err != nil {
-		return nil, goactor.ErrorWrapf(err, "protocol:%d marshal error %s", p.protoId, msg.String())
+		return nil, goactor.ErrorWrapf(err, "protocol:%d marshal error", p.protoId)
 	}
 	return buf, nil
 }
@@ -143,7 +143,7 @@ func (p *Protobuf) UnPackRequest(args interface{}) ([]interface{}, interface{}, 
 	req := cmd.Req()
 	err := proto.Unmarshal(buf, req)
 	if err != nil {
-		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d unmarshal error %s", p.protoId, req.String())
+		return nil, nil, goactor.ErrorWrapf(goactor.ErrPackErr, "protocol:%d unmarshal error", p.protoId)
 	}
 	return []interface{}{req}, cmd, nil
 }
@@ -162,7 +162,7 @@ func (p *Protobuf) UnPackResponse(ctx interface{}, args interface{}) ([]interfac
 	rsp := ctx.(*PbMethod).Rsp()
 	err := proto.Unmarshal(buf, rsp)
 	if err != nil {
-		return nil, goactor.ErrorWrapf(err, "protocol:%d unmarshal error %s", p.protoId, rsp.String())
+		return nil, goactor.ErrorWrapf(err, "protocol:%d unmarshal error", p.protoId)
 	}
 	return []interface{}{rsp}, nil
 }

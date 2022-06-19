@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 func NewNats(servers string) *NatsTransport {

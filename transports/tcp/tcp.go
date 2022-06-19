@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	goactor "github.com/lsg2020/go-actor"
 	message "github.com/lsg2020/go-actor/pb"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 )
 
 // NewTcp 创建一个tcp传输器

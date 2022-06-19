@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/golang/protobuf/jsonpb"
-	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/mux"
 	goactor "github.com/lsg2020/go-actor"
 	"github.com/lsg2020/go-actor/examples/TicTacToe/game"
@@ -18,6 +16,8 @@ import (
 	"github.com/lsg2020/go-actor/protocols/protobuf"
 	"github.com/lsg2020/go-actor/protocols/protobuf/tracing"
 	"github.com/opentracing/opentracing-go"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 var system *goactor.ActorSystem
@@ -102,11 +102,11 @@ func responseJson(w http.ResponseWriter, err error, data proto.Message) {
 		return
 	}
 
-	buf, _ := (&jsonpb.Marshaler{
-		EmitDefaults: true,
-	}).MarshalToString(data)
+	buf, _ := protojson.MarshalOptions{
+		EmitUnpopulated: true,
+	}.Marshal(data)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Write([]byte(buf))
+	w.Write(buf)
 	return
 }
 

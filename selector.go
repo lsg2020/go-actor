@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strconv"
 
-	etcd "github.com/coreos/etcd/clientv3"
+	etcd "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 

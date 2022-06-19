@@ -5,9 +5,9 @@ package hello
 
 import (
 	context "context"
-	proto "github.com/golang/protobuf/proto"
 	go_actor "github.com/lsg2020/go-actor"
 	zap "go.uber.org/zap"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // HelloServiceInterface is the server API for HelloService service.

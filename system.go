@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	etcd "github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/clientv3/concurrency"
 	"github.com/pkg/errors"
+	etcd "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
 )
 
