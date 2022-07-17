@@ -7,6 +7,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultEtcdTTL = 30
+)
+
 type ActorSystemOption func(ops *actorSystemOptions)
 
 type actorSystemOptions struct {
@@ -18,6 +22,7 @@ type actorSystemOptions struct {
 	transports []Transport
 	logger     *zap.Logger
 	ctx        context.Context
+	ttl        int
 }
 
 func (options *actorSystemOptions) init() (*actorSystemOptions, error) {
@@ -43,6 +48,9 @@ func (options *actorSystemOptions) init() (*actorSystemOptions, error) {
 	}
 	if opts.ctx == nil {
 		opts.ctx = context.Background()
+	}
+	if opts.ttl == 0 {
+		opts.ttl = defaultEtcdTTL
 	}
 
 	return opts, nil
@@ -87,6 +95,12 @@ func WithLogger(logger *zap.Logger) ActorSystemOption {
 func WithContext(ctx context.Context) ActorSystemOption {
 	return func(options *actorSystemOptions) {
 		options.ctx = ctx
+	}
+}
+
+func WithTTL(ttl int) ActorSystemOption {
+	return func(optionss *actorSystemOptions) {
+		optionss.ttl = ttl
 	}
 }
 

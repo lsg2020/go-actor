@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	etcd "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/zap"
@@ -108,7 +107,7 @@ func (system *ActorSystem) initEtcd() error {
 			DialTimeout: time.Second * 5,
 		})
 		if err != nil {
-			return errors.Wrapf(err, "etcds:%v", system.options.etcd)
+			return fmt.Errorf("etcds:%v, %w", system.options.etcd, err)
 		}
 		system.etcdClient = etcdClient
 	} else {
@@ -124,9 +123,9 @@ func (system *ActorSystem) initEtcd() error {
 			cancel()
 		}
 	})
-	system.etcdSession, err = concurrency.NewSession(etcdClient, concurrency.WithTTL(15), concurrency.WithContext(ctx))
+	system.etcdSession, err = concurrency.NewSession(etcdClient, concurrency.WithTTL(system.options.ttl), concurrency.WithContext(ctx))
 	if err != nil {
-		return errors.Wrapf(err, "etcd connect failed:%v", system.options.etcd)
+		return fmt.Errorf("etcd connect failed:%v %w", system.options.etcd, err)
 	}
 	connected = true
 
@@ -141,13 +140,13 @@ func (system *ActorSystem) initEtcd() error {
 			transports,
 		})
 		if err != nil {
-			return errors.Wrapf(err, "register etcd")
+			return fmt.Errorf("register etcd, %w", err)
 		}
 
 		key := fmt.Sprintf("/%s/%s/nodes/%d", system.options.etcdPrefix, system.options.name, system.instanceID)
 		_, err = etcdClient.Put(system.Context(), key, string(v), etcd.WithLease(system.etcdSession.Lease()))
 		if err != nil {
-			return errors.Wrapf(err, "register etcd key:%s", key)
+			return fmt.Errorf("register etcd key:%s, %w", key, err)
 		}
 	}
 

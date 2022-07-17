@@ -250,7 +250,7 @@ func (msg *DispatchMessage) ToPB() *message.Message {
 		} else {
 			pb.ResponseErr = &message.Error{
 				Code: int32(ErrCodeSystem),
-				Msg:  err.Error(),
+				Msg:  msg.ResponseErr.Error(),
 			}
 		}
 	}

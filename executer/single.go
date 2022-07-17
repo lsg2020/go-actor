@@ -8,7 +8,6 @@ import (
 	"time"
 
 	goactor "github.com/lsg2020/go-actor"
-	"go.uber.org/zap"
 )
 
 type responseInfo struct {
@@ -64,8 +63,8 @@ func (executer *SingleGoroutine) work(initWg *sync.WaitGroup, workId int) {
 						executer.workId = workId
 					}
 				} else {
-					logger := goactor.DefaultLogger()
-					logger.Warn("dispatch response miss", zap.Int("session", session))
+					//logger := goactor.DefaultLogger()
+					//logger.Warn("dispatch response miss", zap.Int("session", session))
 				}
 				continue
 			}
